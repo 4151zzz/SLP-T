@@ -1,0 +1,17 @@
+{
+  "name": "slp-t-e2e-tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node run.mjs --tier=all",
+    "test:t1": "node run.mjs --tier=1",
+    "test:t2": "node run.mjs --tier=2",
+    "test:t3": "node run.mjs --tier=3",
+    "test:t4": "node run.mjs --tier=4",
+    "list": "node run.mjs --list"
+  },
+  "dependencies": {
+    "playwright-core": "^1.65.1"
+  }
+}

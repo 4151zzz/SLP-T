@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+tests/node_modules/
+
+# Environment files
+.env
+.env.*
+
+# Runtime logs and temporary uploads
+storage/logs/*.log
+uploads/maintenance/*
+!uploads/maintenance/.gitkeep
+!uploads/maintenance/index.php
+uploads/permissions/*
+!uploads/permissions/.gitkeep
+!uploads/permissions/index.php
+uploads/signatures/*
+!uploads/signatures/.gitkeep
+!uploads/signatures/index.php
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
