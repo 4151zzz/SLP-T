@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 $user = function_exists('current_user') ? current_user() : null;
 $appName = defined('APP_NAME') ? APP_NAME : 'ระบบงานบริหารทั่วไป';
-$appOrgName = defined('APP_ORG_NAME') ? APP_ORG_NAME : 'สำนักงานบริหารทั่วไป';
+$appOrgName = defined('APP_ORG_NAME') ? APP_ORG_NAME : 'โรงเรียนสระหลวงพิทยาคม';
 $pageTitleText = (isset($pageTitle) && $pageTitle !== '') ? ($pageTitle . ' — ' . $appName) : $appName;
 $currentScript = basename((string)($_SERVER['PHP_SELF'] ?? ''), '.php');
 $activeKey = $activeNav ?? $currentScript;
@@ -33,6 +33,7 @@ $flashes = function_exists('get_flashes') ? get_flashes() : [];
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($pageTitleText) ?></title>
+    <link rel="icon" type="image/png" href="<?= e(app_url('/assets/img/school-logo.png')) ?>">
     <link rel="stylesheet" href="<?= e(app_url('/assets/vendor/bootstrap/bootstrap.min.css')) ?>">
     <link rel="stylesheet" href="<?= e(app_url('/assets/vendor/bootstrap/bootstrap-icons.min.css')) ?>">
     <link rel="stylesheet" href="<?= e(app_url('/assets/css/app.css')) ?>">
@@ -59,8 +60,8 @@ $flashes = function_exists('get_flashes') ? get_flashes() : [];
             <a class="navbar-brand fw-semibold d-flex align-items-center gap-2 mb-0 min-w-0 flex-shrink-1"
                href="<?= e(app_url('/index.php')) ?>"
                data-testid="brand-link">
-                <span class="navbar-brand-icon">
-                    <i class="bi bi-building-gear"></i>
+                <span class="navbar-brand-icon navbar-brand-logo">
+                    <img src="<?= e(app_url('/assets/img/school-logo.png')) ?>" alt="ตรา<?= e($appOrgName) ?>">
                 </span>
                 <span class="d-flex flex-column min-w-0 overflow-hidden">
                     <span class="text-truncate lh-sm"><?= e($appName) ?></span>
@@ -80,15 +81,13 @@ $flashes = function_exists('get_flashes') ? get_flashes() : [];
                         <div class="text-white-50" style="font-size: 0.72rem;"><?= e($roleDisplay) ?></div>
                     </div>
                 </div>
-                <form method="post" action="<?= e(app_url('/logout.php')) ?>" class="d-inline m-0" data-testid="logout-form">
-                    <?= function_exists('csrf_field') ? csrf_field() : '' ?>
-                    <button type="submit"
-                            class="btn btn-light bg-white bg-opacity-10 text-white border-white border-opacity-25 btn-sm touch-target d-inline-flex align-items-center gap-1 px-2 px-md-3 rounded-pill"
-                            data-testid="logout-btn">
-                        <i class="bi bi-box-arrow-right"></i>
-                        <span class="d-none d-md-inline">ออกจากระบบ</span>
-                    </button>
-                </form>
+                <button type="submit"
+                        form="appLogoutForm"
+                        class="btn btn-light bg-white bg-opacity-10 text-white border-white border-opacity-25 btn-sm touch-target d-inline-flex align-items-center gap-1 px-2 px-md-3 rounded-pill"
+                        data-testid="logout-btn">
+                    <i class="bi bi-box-arrow-right"></i>
+                    <span class="d-none d-md-inline">ออกจากระบบ</span>
+                </button>
             <?php else: ?>
                 <a href="<?= e(app_url('/login.php')) ?>" class="btn btn-outline-light btn-sm touch-target d-inline-flex align-items-center rounded-pill px-3" data-testid="nav-login">เข้าสู่ระบบ</a>
                 <a href="<?= e(app_url('/register.php')) ?>" class="btn btn-light btn-sm text-primary fw-semibold touch-target d-inline-flex align-items-center rounded-pill px-3" data-testid="nav-register">ลงทะเบียนภายนอก</a>

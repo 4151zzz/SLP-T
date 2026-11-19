@@ -7,7 +7,52 @@
     const MAX_DIMENSION = 1600;
     const RESIZABLE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function safeHref(url) {
+        const s = String(url ?? '').trim();
+        if (s === '') return '#';
+        if (s.startsWith('/') || /^https?:\/\//i.test(s)) {
+            return s;
+        }
+        return '#';
+    }
+
     function showToast(message, type) {
+        const msgText = String(message || '');
+        const normType = (type === 'danger' || type === 'error')
+            ? 'error'
+            : (type === 'success' || type === 'warning' ? type : 'info');
+
+        if (typeof window.Swal !== 'undefined' && typeof window.Swal.mixin === 'function') {
+            const Toast = window.Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 3200,
+                timerProgressBar: true,
+                didOpen: function (toastEl) {
+                    if (normType === 'success' || normType === 'info') {
+                        toastEl.setAttribute('role', 'status');
+                    }
+                    toastEl.addEventListener('mouseenter', window.Swal.stopTimer);
+                    toastEl.addEventListener('mouseleave', window.Swal.resumeTimer);
+                }
+            });
+            Toast.fire({
+                icon: normType,
+                title: msgText
+            });
+            return;
+        }
+
         const container = document.getElementById('appToastContainer');
         if (!container || typeof bootstrap === 'undefined' || !bootstrap.Toast) {
             return;
@@ -33,7 +78,7 @@
 
         const body = document.createElement('div');
         body.className = 'toast-body';
-        body.textContent = String(message || '');
+        body.textContent = msgText;
 
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -53,16 +98,38 @@
         instance.show();
     }
 
-    function confirmAction(message) {
+    function confirmAction(message, opts) {
+        const textMsg = String(message || 'คุณต้องการดำเนินการต่อหรือไม่?');
+        const options = opts && typeof opts === 'object' ? opts : {};
+
+        if (typeof window.Swal !== 'undefined' && typeof window.Swal.fire === 'function') {
+            return window.Swal.fire({
+                icon: options.icon || 'warning',
+                title: options.title || 'ยืนยันการดำเนินการ',
+                text: textMsg,
+                showCancelButton: true,
+                confirmButtonText: options.confirmText || 'ยืนยัน',
+                cancelButtonText: options.cancelText || 'ยกเลิก',
+                confirmButtonColor: options.danger ? '#dc2626' : '#2563eb',
+                cancelButtonColor: '#64748b',
+                reverseButtons: true,
+                customClass: {
+                    popup: 'slp-swal-popup'
+                }
+            }).then(function (result) {
+                return Boolean(result && result.isConfirmed);
+            });
+        }
+
         const modalEl = document.getElementById('appConfirmModal');
         const bodyEl = document.getElementById('appConfirmModalBody');
         const okBtn = document.getElementById('appConfirmModalOk');
 
         if (!modalEl || !bodyEl || !okBtn || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
-            return Promise.resolve(window.confirm(message || 'ยืนยันการดำเนินการ?'));
+            return Promise.resolve(window.confirm(textMsg));
         }
 
-        bodyEl.textContent = message || 'คุณต้องการดำเนินการต่อหรือไม่?';
+        bodyEl.textContent = textMsg;
 
         return new Promise(function (resolve) {
             let settled = false;
@@ -92,6 +159,128 @@
             modalEl.addEventListener('hidden.bs.modal', onHidden);
             modal.show();
         });
+    }
+
+    function showDetail(data) {
+        const d = data && typeof data === 'object' ? data : {};
+        let html = '';
+
+        if (d.subtitle || d.badge) {
+            html += '<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">';
+            if (d.subtitle) {
+                html += '<span class="text-muted small">' + escapeHtml(d.subtitle) + '</span>';
+            }
+            if (d.badge) {
+                html += '<span class="slp-swal-badge">' + escapeHtml(d.badge) + '</span>';
+            }
+            html += '</div>';
+        }
+
+        if (Array.isArray(d.rows) && d.rows.length > 0) {
+            html += '<div class="slp-swal-detail-list">';
+            d.rows.forEach(function (row) {
+                if (!row || (!row.label && !row.value)) return;
+                html += '<div class="slp-swal-detail-row">'
+                    + '<span class="slp-swal-detail-label">' + escapeHtml(row.label || '') + '</span>'
+                    + '<span class="slp-swal-detail-val">' + escapeHtml(row.value || '-') + '</span>'
+                    + '</div>';
+            });
+            html += '</div>';
+        }
+
+        if (d.note) {
+            const toneClass = d.noteTone === 'danger' ? ' is-danger' : (d.noteTone === 'success' ? ' is-success' : '');
+            html += '<div class="slp-swal-note' + toneClass + '">';
+            if (d.noteTitle) {
+                html += '<div class="fw-bold mb-1">' + escapeHtml(d.noteTitle) + '</div>';
+            }
+            html += '<div>' + escapeHtml(d.note).replace(/\n/g, '<br>') + '</div></div>';
+        }
+
+        if (Array.isArray(d.timeline) && d.timeline.length > 0) {
+            html += '<div class="fw-bold small text-dark mb-2">ประวัติการพิจารณา</div>';
+            html += '<div class="slp-swal-timeline">';
+            d.timeline.forEach(function (item) {
+                if (!item) return;
+                html += '<div class="slp-swal-timeline-item">';
+                html += '<div class="d-flex justify-content-between align-items-center gap-2">'
+                    + '<span class="fw-bold text-dark">' + escapeHtml(item.step || '') + '</span>'
+                    + '<span class="badge text-bg-light border text-dark">' + escapeHtml(item.status || '') + '</span>'
+                    + '</div>';
+                html += '<div class="text-muted">' + escapeHtml(item.signer || '') + (item.time ? ' · ' + escapeHtml(item.time) : '') + '</div>';
+                if (item.comment) {
+                    html += '<div class="text-dark mt-1">“' + escapeHtml(item.comment) + '”</div>';
+                }
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+
+        if (Array.isArray(d.photos) && d.photos.length > 0) {
+            html += '<div class="row g-2 mb-3">';
+            d.photos.forEach(function (ph) {
+                if (!ph || !ph.url) return;
+                const url = safeHref(ph.url);
+                html += '<div class="col-12 col-sm-6">'
+                    + '<div class="small fw-semibold text-muted mb-1">' + escapeHtml(ph.label || 'รูปภาพ') + '</div>'
+                    + '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">'
+                    + '<img src="' + escapeHtml(url) + '" alt="' + escapeHtml(ph.label || 'รูปภาพ') + '" class="slp-swal-photo">'
+                    + '</a></div>';
+            });
+            html += '</div>';
+        }
+
+        if (Array.isArray(d.links) && d.links.length > 0) {
+            html += '<div class="d-flex flex-wrap gap-2 mt-2">';
+            d.links.forEach(function (lnk) {
+                if (!lnk || !lnk.href) return;
+                const btnCls = lnk.variant === 'primary'
+                    ? 'btn btn-primary btn-sm rounded-3 px-3'
+                    : (lnk.variant === 'success' ? 'btn btn-outline-success btn-sm rounded-3 px-3' : 'btn btn-outline-secondary btn-sm rounded-3 px-3');
+                html += '<a href="' + escapeHtml(safeHref(lnk.href)) + '"'
+                    + (lnk.download ? ' download' : '')
+                    + ' class="' + btnCls + '">'
+                    + escapeHtml(lnk.label || 'เปิด') + '</a>';
+            });
+            html += '</div>';
+        }
+
+        if (typeof window.Swal !== 'undefined' && typeof window.Swal.fire === 'function') {
+            return window.Swal.fire({
+                title: String(d.title || 'รายละเอียด'),
+                html: html,
+                showConfirmButton: true,
+                confirmButtonText: 'ปิดหน้าต่าง',
+                confirmButtonColor: '#2563eb',
+                showCloseButton: true,
+                width: 640,
+                customClass: {
+                    popup: 'slp-swal-popup'
+                }
+            });
+        }
+
+        return Promise.resolve();
+    }
+
+    function showPhoto(url, title) {
+        const cleanUrl = safeHref(url);
+        const caption = String(title || 'รูปภาพประกอบ');
+        if (typeof window.Swal !== 'undefined' && typeof window.Swal.fire === 'function') {
+            return window.Swal.fire({
+                title: caption,
+                imageUrl: cleanUrl,
+                imageAlt: caption,
+                showConfirmButton: false,
+                showCloseButton: true,
+                width: 640,
+                customClass: {
+                    popup: 'slp-swal-popup'
+                }
+            });
+        }
+        window.open(cleanUrl, '_blank', 'noopener');
+        return Promise.resolve();
     }
 
     function loadBitmapOrImage(file) {
@@ -243,7 +432,8 @@
                 return;
             }
             ev.preventDefault();
-            confirmAction(form.getAttribute('data-confirm')).then(function (ok) {
+            const isDanger = form.getAttribute('data-confirm-danger') === '1';
+            confirmAction(form.getAttribute('data-confirm'), { danger: isDanger }).then(function (ok) {
                 if (ok) {
                     form.dataset.confirmed = '1';
                     if (typeof form.requestSubmit === 'function') {
@@ -256,6 +446,29 @@
         });
 
         document.addEventListener('click', function (ev) {
+            const detailBtn = ev.target instanceof Element ? ev.target.closest('[data-swal-detail]') : null;
+            if (detailBtn) {
+                ev.preventDefault();
+                try {
+                    const raw = detailBtn.getAttribute('data-swal-detail') || '{}';
+                    showDetail(JSON.parse(raw));
+                } catch (err) {
+                    console.error(err);
+                }
+                return;
+            }
+
+            const photoBtn = ev.target instanceof Element ? ev.target.closest('[data-swal-photo]') : null;
+            if (photoBtn) {
+                ev.preventDefault();
+                const photoUrl = photoBtn.getAttribute('data-swal-photo') || '';
+                const photoTitle = photoBtn.getAttribute('data-swal-title') || 'รูปภาพประกอบ';
+                if (photoUrl !== '') {
+                    showPhoto(photoUrl, photoTitle);
+                }
+                return;
+            }
+
             const target = ev.target instanceof Element ? ev.target.closest('a[data-confirm], button[data-confirm]') : null;
             if (!target) {
                 return;
@@ -268,7 +481,8 @@
                 return;
             }
             ev.preventDefault();
-            confirmAction(target.getAttribute('data-confirm')).then(function (ok) {
+            const isDanger = target.getAttribute('data-confirm-danger') === '1';
+            confirmAction(target.getAttribute('data-confirm'), { danger: isDanger }).then(function (ok) {
                 if (!ok) return;
                 if (target instanceof HTMLAnchorElement && target.href) {
                     window.location.href = target.href;
@@ -280,14 +494,27 @@
         });
     }
 
+    function autoFlashToast() {
+        const successAlert = document.querySelector('.app-flash-region [data-testid="flash-message"][data-flash-type="success"]');
+        if (successAlert) {
+            const text = (successAlert.textContent || '').trim();
+            if (text !== '') {
+                showToast(text, 'success');
+            }
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         attachFileInputHandlers();
         attachConfirmHandlers();
+        autoFlashToast();
     });
 
     window.SLPApp = {
         showToast: showToast,
         confirmAction: confirmAction,
+        showDetail: showDetail,
+        showPhoto: showPhoto,
         resizeImageFile: resizeImageFile
     };
 })();

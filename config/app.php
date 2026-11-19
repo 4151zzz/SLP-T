@@ -20,7 +20,10 @@ if (!defined('APP_NAME')) {
     define('APP_NAME', 'ระบบงานบริหารทั่วไป');
 }
 if (!defined('APP_ORG_NAME')) {
-    define('APP_ORG_NAME', getenv('APP_ORG_NAME') ?: 'สำนักงานบริหารทั่วไป');
+    define('APP_ORG_NAME', getenv('APP_ORG_NAME') ?: 'โรงเรียนสระหลวงพิทยาคม');
+}
+if (!defined('APP_DEVELOPERS')) {
+    define('APP_DEVELOPERS', 'wunPiyapong & Chonthicha Puengpak');
 }
 
 if (!defined('NOTIFY_DRIVER')) {
@@ -191,12 +194,41 @@ if (!function_exists('app_base_path')) {
     function app_base_path(): string
     {
         $envBase = getenv('APP_BASE_PATH');
-        if ($envBase === false || $envBase === '' || $envBase === '/') {
+        if ($envBase !== false) {
+            if ($envBase === '' || $envBase === '/') {
+                return '';
+            }
+            $normalized = str_replace('\\', '/', trim($envBase));
+            $normalized = '/' . trim($normalized, '/');
+            return $normalized === '/' ? '' : $normalized;
+        }
+
+        if (PHP_SAPI === 'cli' || empty($_SERVER['DOCUMENT_ROOT'])) {
             return '';
         }
-        $normalized = str_replace('\\', '/', trim($envBase));
-        $normalized = '/' . trim($normalized, '/');
-        return $normalized === '/' ? '' : $normalized;
+
+        $docRoot = realpath((string)$_SERVER['DOCUMENT_ROOT']);
+        $appRoot = realpath(APP_ROOT);
+        if ($docRoot === false || $appRoot === false) {
+            return '';
+        }
+
+        $docNorm = rtrim(str_replace('\\', '/', $docRoot), '/');
+        $appNorm = rtrim(str_replace('\\', '/', $appRoot), '/');
+
+        $cmpApp = DIRECTORY_SEPARATOR === '\\' ? strtolower($appNorm) : $appNorm;
+        $cmpDoc = DIRECTORY_SEPARATOR === '\\' ? strtolower($docNorm) : $docNorm;
+
+        if ($cmpApp === $cmpDoc) {
+            return '';
+        }
+        if (str_starts_with($cmpApp, $cmpDoc . '/')) {
+            $sub = substr($appNorm, strlen($docNorm));
+            $sub = '/' . trim($sub, '/');
+            return $sub === '/' ? '' : $sub;
+        }
+
+        return '';
     }
 }
 

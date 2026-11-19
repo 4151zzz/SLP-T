@@ -168,6 +168,7 @@ if (!function_exists('require_role')) {
                 exit;
             }
             $home = e(app_url('/index.php'));
+            $bsCss = e(app_url('/assets/vendor/bootstrap/bootstrap.min.css'));
             header('Content-Type: text/html; charset=UTF-8');
             echo <<<HTML
 <!DOCTYPE html>
@@ -176,7 +177,7 @@ if (!function_exists('require_role')) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>403 Forbidden — ไม่มีสิทธิ์เข้าถึง</title>
-    <link rel="stylesheet" href="/assets/vendor/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="{$bsCss}">
 </head>
 <body class="bg-light d-flex align-items-center justify-content-center min-vh-100 p-3">
     <div class="card shadow-sm border-danger" style="max-width: 480px; width: 100%;">
@@ -231,7 +232,8 @@ if (!function_exists('attempt_login')) {
         foreach ($rows as $row) {
             if ($row['user_type'] === USER_TYPE_INTERNAL) {
                 $isInternalMatch = ($row['username'] === $identifier)
-                    || ($row['staff_id'] !== null && $row['staff_id'] === $identifier);
+                    || ($row['staff_id'] !== null && $row['staff_id'] === $identifier)
+                    || ($row['email'] !== null && strcasecmp((string)$row['email'], $identifier) === 0);
                 if ($isInternalMatch) {
                     $matched = $row;
                     break;

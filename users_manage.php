@@ -452,6 +452,18 @@ require __DIR__ . '/includes/layout_header.php';
             $uInitial = mb_substr((string)$uRow['full_name'], 0, 1, 'UTF-8') ?: 'U';
             $uOrgText = (string)($uRow['department'] ?: ($uRow['organization'] ?: '-'));
             $isSelf = ($uId === (int)$user['id']);
+            $swalUserPayload = [
+                'title'    => (string)$uRow['full_name'],
+                'subtitle' => '@' . $uRow['username'] . (!empty($uRow['staff_id']) ? ' (' . $uRow['staff_id'] . ')' : ''),
+                'badge'    => $uRoleLabel . ($uActive ? ' · ปกติ' : ' · ระงับใช้งาน'),
+                'rows'     => [
+                    ['label' => 'ประเภทบัญชี',  'value' => $uRow['user_type'] === USER_TYPE_EXTERNAL ? 'บุคคลภายนอก' : 'บุคลากรภายใน'],
+                    ['label' => 'ตำแหน่ง',      'value' => (string)($uRow['position_title'] ?: '-')],
+                    ['label' => 'ฝ่าย/หน่วยงาน', 'value' => $uOrgText],
+                    ['label' => 'อีเมล',        'value' => (string)$uRow['email']],
+                    ['label' => 'โทรศัพท์',     'value' => (string)($uRow['phone'] ?: '-')],
+                ],
+            ];
         ?>
             <div class="role-queue-item">
                 <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
@@ -467,22 +479,24 @@ require __DIR__ . '/includes/layout_header.php';
                                     <span class="badge rounded-pill text-bg-danger">ระงับการใช้งาน</span>
                                 <?php endif; ?>
                             </div>
-                            <div class="small text-muted text-truncate">
-                                <span class="fw-medium text-secondary"><?= e($uRow['username']) ?></span>
+                            <div class="compact-meta text-truncate">
+                                <span class="fw-medium text-secondary">@<?= e($uRow['username']) ?></span>
                                 <?= !empty($uRow['staff_id']) ? ' (' . e($uRow['staff_id']) . ')' : '' ?>
                                 · <?= e($uOrgText) ?>
                                 <?= !empty($uRow['position_title']) ? ' · ' . e($uRow['position_title']) : '' ?>
-                            </div>
-                            <div class="small text-secondary text-truncate">
-                                <i class="bi bi-envelope me-1"></i><?= e($uRow['email']) ?>
-                                <?= !empty($uRow['phone']) ? ' · <i class="bi bi-telephone me-1"></i>' . e($uRow['phone']) : '' ?>
                             </div>
                         </div>
                     </div>
 
                     <div class="d-flex flex-wrap align-items-center gap-2 flex-shrink-0 align-self-end align-self-lg-center">
                         <button type="button"
-                                class="btn btn-sm btn-outline-primary rounded-3 px-3 btn-edit-user"
+                                class="btn btn-sm btn-soft-secondary rounded-3 px-3 fw-semibold"
+                                data-swal-detail="<?= e((string)json_encode($swalUserPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>">
+                            <i class="bi bi-eye me-1"></i>ดูข้อมูล
+                        </button>
+
+                        <button type="button"
+                                class="btn btn-sm btn-soft-primary rounded-3 px-3 fw-semibold btn-edit-user"
                                 data-bs-toggle="modal"
                                 data-bs-target="#editUserModal"
                                 data-user-id="<?= $uId ?>"
@@ -505,7 +519,7 @@ require __DIR__ . '/includes/layout_header.php';
                                 <input type="hidden" name="action" value="toggle_active">
                                 <input type="hidden" name="user_id" value="<?= $uId ?>">
                                 <button type="submit"
-                                        class="btn btn-sm <?= $uActive ? 'btn-outline-warning text-dark' : 'btn-outline-success' ?> rounded-3 px-3">
+                                        class="btn btn-sm <?= $uActive ? 'btn-soft-warning' : 'btn-soft-success' ?> rounded-3 px-3 fw-semibold">
                                     <i class="bi <?= $uActive ? 'bi-slash-circle' : 'bi-check-circle' ?> me-1"></i>
                                     <?= $uActive ? 'ระงับบัญชี' : 'เปิดใช้งาน' ?>
                                 </button>
@@ -514,12 +528,13 @@ require __DIR__ . '/includes/layout_header.php';
                             <form method="post"
                                   action="<?= e(app_url('/users_manage.php')) ?>"
                                   class="d-inline m-0"
+                                  data-confirm-danger="1"
                                   data-confirm="<?= e('ยืนยันการลบบัญชีผู้ใช้งาน "' . $uRow['full_name'] . '" (' . $uRow['username'] . ') ออกจากระบบอย่างถาวรใช่หรือไม่?') ?>">
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="action" value="delete_user">
                                 <input type="hidden" name="user_id" value="<?= $uId ?>">
                                 <button type="submit"
-                                        class="btn btn-sm btn-outline-danger rounded-3 px-3"
+                                        class="btn btn-sm btn-soft-danger rounded-3 px-3 fw-semibold"
                                         data-testid="btn-delete-user-<?= $uId ?>">
                                     <i class="bi bi-trash3 me-1"></i>ลบ
                                 </button>
@@ -758,7 +773,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    <?php if ($openAddModal && !empty($createErrors)): ?>
+    <?php if (($openAddModal && !empty($createErrors)) || (($_GET['add'] ?? '') === '1')): ?>
     if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
         bootstrap.Modal.getOrCreateInstance(document.getElementById('addUserModal')).show();
     }

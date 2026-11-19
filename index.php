@@ -11,7 +11,6 @@ if ($user === null) {
 
 $pageTitle = 'หน้าหลัก';
 $activeNav = 'index';
-$menuItems = nav_items($user);
 $pendingCount = pending_approval_count($user);
 $role = (string)($user['role'] ?? ROLE_USER);
 $roleLabel = ROLE_LABELS[$role] ?? $role;
@@ -39,6 +38,13 @@ $stats = [
 ];
 
 $priorityItems = [];
+$scheduleItems = [];
+
+$shortThaiMonths = [
+    1 => 'ม.ค.', 2 => 'ก.พ.', 3 => 'มี.ค.', 4 => 'เม.ย.',
+    5 => 'พ.ค.', 6 => 'มิ.ย.', 7 => 'ก.ค.', 8 => 'ส.ค.',
+    9 => 'ก.ย.', 10 => 'ต.ค.', 11 => 'พ.ย.', 12 => 'ธ.ค.',
+];
 
 try {
     $pdo = get_pdo();
@@ -70,6 +76,7 @@ try {
     $statusLabelsMap = defined('BOOKING_STATUS_LABELS') ? BOOKING_STATUS_LABELS : [];
     $repairBadgesMap = defined('REPAIR_STATUS_BADGES') ? REPAIR_STATUS_BADGES : [];
 
+    // Focused Priority Queue (max 4 items)
     if ($viewMode === 'executive' || $viewMode === 'approver_head') {
         $whereQueue = match ($role) {
             ROLE_DIRECTOR      => "b.status = 'pending_director'",
@@ -79,17 +86,20 @@ try {
             default            => '1 = 0',
         };
         $rows = $pdo->query(
-            "SELECT b.booking_type, b.title, b.start_datetime, b.status, u.full_name AS requester_name
+            "SELECT b.id, b.reference_code, b.booking_type, b.title, b.purpose, b.start_datetime, b.end_datetime,
+                    b.status, b.destination, u.full_name AS requester_name, r.room_code, r.name AS room_name
              FROM bookings b
              INNER JOIN users u ON u.id = b.requester_id
+             LEFT JOIN rooms r ON r.id = b.room_id
              WHERE {$whereQueue}
              ORDER BY b.start_datetime ASC
-             LIMIT 3"
+             LIMIT 4"
         )->fetchAll();
 
         foreach ($rows as $row) {
             $meta = $statusLabelsMap[$row['status']] ?? ['label' => $row['status'], 'badge' => 'secondary'];
             $isRoom = ($row['booking_type'] === 'room');
+            $placeLabel = $isRoom ? trim(($row['room_code'] ?? '') . ' ' . ($row['room_name'] ?? '')) : (string)($row['destination'] ?: '-');
             $priorityItems[] = [
                 'icon'       => $isRoom ? 'bi-door-open' : 'bi-truck',
                 'iconBox'    => $isRoom ? 'icon-box-indigo' : 'icon-box-teal',
@@ -99,11 +109,27 @@ try {
                 'badgeClass' => (string)$meta['badge'],
                 'ctaHref'    => app_url('/approvals.php'),
                 'ctaLabel'   => 'พิจารณา',
+                'detail'     => [
+                    'title'     => (string)$row['title'],
+                    'subtitle'  => $row['reference_code'] . ' · ' . $row['requester_name'],
+                    'badge'     => (string)$meta['label'],
+                    'rows'      => [
+                        ['label' => 'ประเภท', 'value' => $isRoom ? 'จองห้องประชุม' : 'จองยานพาหนะ'],
+                        ['label' => $isRoom ? 'ห้องประชุม' : 'ปลายทาง', 'value' => $placeLabel ?: '-'],
+                        ['label' => 'วันเวลา', 'value' => thai_date($row['start_datetime'], true, true) . ' – ' . date('H:i', strtotime($row['end_datetime'])) . ' น.'],
+                    ],
+                    'noteTitle' => 'วัตถุประสงค์',
+                    'note'      => (string)($row['purpose'] ?: ''),
+                    'links'     => [
+                        ['label' => 'ไปหน้าพิจารณาอนุมัติ', 'href' => app_url('/approvals.php'), 'variant' => 'primary'],
+                        ['label' => 'ดูไทม์ไลน์', 'href' => app_url('/booking_detail.php?id=' . (int)$row['id']), 'variant' => 'secondary'],
+                    ],
+                ],
             ];
         }
     } elseif ($viewMode === 'operational_staff') {
         $vehRows = $pdo->query(
-            "SELECT b.title, b.start_datetime, u.full_name AS requester_name
+            "SELECT b.id, b.reference_code, b.title, b.destination, b.start_datetime, b.end_datetime, u.full_name AS requester_name
              FROM bookings b
              INNER JOIN users u ON u.id = b.requester_id
              WHERE b.status = 'pending_head' AND b.booking_type = 'vehicle' AND (b.vehicle_id IS NULL OR b.driver_id IS NULL)
@@ -120,13 +146,25 @@ try {
                 'badgeClass' => 'warning text-dark',
                 'ctaHref'    => app_url('/approvals.php'),
                 'ctaLabel'   => 'จัดรถ',
+                'detail'     => [
+                    'title'    => (string)$vr['title'],
+                    'subtitle' => $vr['reference_code'] . ' · ' . $vr['requester_name'],
+                    'badge'    => 'รอจัดรถ/คนขับ',
+                    'rows'     => [
+                        ['label' => 'ปลายทาง', 'value' => (string)($vr['destination'] ?: '-')],
+                        ['label' => 'วันเวลา', 'value' => thai_date($vr['start_datetime'], true, true) . ' – ' . date('H:i', strtotime($vr['end_datetime'])) . ' น.'],
+                    ],
+                    'links'    => [
+                        ['label' => 'จัดรถและคนขับ', 'href' => app_url('/approvals.php'), 'variant' => 'primary'],
+                    ],
+                ],
             ];
         }
 
-        $remain = 3 - count($priorityItems);
+        $remain = 4 - count($priorityItems);
         if ($remain > 0) {
             $maintRows = $pdo->query(
-                "SELECT m.equipment_name, m.issue_description, m.location_text, m.urgency, m.status, m.reported_at
+                "SELECT m.ticket_code, m.equipment_name, m.issue_description, m.location_text, m.urgency, m.status, m.reported_at, m.repair_notes
                  FROM maintenance_requests m
                  WHERE m.status != 'เสร็จสิ้น'
                  ORDER BY (m.urgency = 'urgent') DESC, m.reported_at DESC
@@ -145,17 +183,31 @@ try {
                     'badgeClass' => $badgeCls,
                     'ctaHref'    => app_url('/maintenance_manage.php'),
                     'ctaLabel'   => 'อัปเดต',
+                    'detail'     => [
+                        'title'     => (string)($mr['equipment_name'] ?: 'งานซ่อม'),
+                        'subtitle'  => $mr['ticket_code'] . ' · ' . thai_date($mr['reported_at'], true, true),
+                        'badge'     => $badgeTxt,
+                        'rows'      => [
+                            ['label' => 'สถานที่',   'value' => (string)$mr['location_text']],
+                            ['label' => 'อาการชำรุด', 'value' => (string)$mr['issue_description']],
+                        ],
+                        'noteTitle' => 'บันทึกช่างล่าสุด',
+                        'note'      => (string)($mr['repair_notes'] ?: ''),
+                        'links'     => [
+                            ['label' => 'ไปหน้าจัดการงานซ่อม', 'href' => app_url('/maintenance_manage.php'), 'variant' => 'primary'],
+                        ],
+                    ],
                 ];
             }
         }
     } else {
         $stmtRecent = $pdo->prepare(
-            "SELECT b.booking_type, b.title, b.start_datetime, b.destination, b.status, r.name AS room_name
+            "SELECT b.id, b.reference_code, b.booking_type, b.title, b.purpose, b.start_datetime, b.end_datetime, b.destination, b.status, r.name AS room_name
              FROM bookings b
              LEFT JOIN rooms r ON r.id = b.room_id
              WHERE b.requester_id = :uid
              ORDER BY b.created_at DESC, b.id DESC
-             LIMIT 3"
+             LIMIT 4"
         );
         $stmtRecent->execute([':uid' => $uid]);
         $recentRows = $stmtRecent->fetchAll();
@@ -171,10 +223,117 @@ try {
                 'subtitle'   => $place . ' · ' . thai_date($rr['start_datetime'], true, true),
                 'badgeLabel' => (string)$meta['label'],
                 'badgeClass' => (string)$meta['badge'],
-                'ctaHref'    => app_url('/my_bookings.php'),
-                'ctaLabel'   => 'ดูรายละเอียด',
+                'ctaHref'    => app_url('/booking_detail.php?id=' . (int)$rr['id']),
+                'ctaLabel'   => 'ดูไทม์ไลน์',
+                'detail'     => [
+                    'title'     => (string)$rr['title'],
+                    'subtitle'  => $rr['reference_code'],
+                    'badge'     => (string)$meta['label'],
+                    'rows'      => [
+                        ['label' => $isRoom ? 'ห้องประชุม' : 'ปลายทาง', 'value' => $place],
+                        ['label' => 'วันเวลา', 'value' => thai_date($rr['start_datetime'], true, true) . ' – ' . date('H:i', strtotime($rr['end_datetime'])) . ' น.'],
+                    ],
+                    'noteTitle' => 'วัตถุประสงค์',
+                    'note'      => (string)($rr['purpose'] ?: ''),
+                    'links'     => [
+                        ['label' => 'เปิดหน้าไทม์ไลน์เต็ม', 'href' => app_url('/booking_detail.php?id=' . (int)$rr['id']), 'variant' => 'primary'],
+                        ['label' => 'พิมพ์บันทึกข้อความ', 'href' => app_url('/print_memo.php?id=' . (int)$rr['id']), 'variant' => 'secondary'],
+                    ],
+                ],
             ];
         }
+    }
+
+    // Upcoming Schedule & Events (right column, max 4 items)
+    $rawSchedule = [];
+    $isPrivilegedViewer = has_role(PRIVILEGED_VIEW_ROLES, $user);
+
+    $evSql = ($role === ROLE_EXTERNAL_USER)
+        ? 'SELECT title, event_type, description, location, start_datetime, end_datetime, is_all_day FROM calendar_events WHERE end_datetime >= NOW() AND is_public = 1 ORDER BY start_datetime ASC LIMIT 4'
+        : 'SELECT title, event_type, description, location, start_datetime, end_datetime, is_all_day FROM calendar_events WHERE end_datetime >= NOW() ORDER BY start_datetime ASC LIMIT 4';
+    foreach ($pdo->query($evSql)->fetchAll() as $ev) {
+        $evTime = ((int)$ev['is_all_day'] === 1)
+            ? 'ตลอดวัน'
+            : (date('H:i', strtotime($ev['start_datetime'])) . ' – ' . date('H:i', strtotime($ev['end_datetime'])) . ' น.');
+        $rawSchedule[] = [
+            'sort_ts'  => (string)$ev['start_datetime'],
+            'color'    => '#7C3AED',
+            'category' => 'กิจกรรมองค์กร',
+            'title'    => (string)$ev['title'],
+            'meta'     => $evTime . (!empty($ev['location']) ? ' · ' . $ev['location'] : ''),
+            'detail'   => [
+                'title'     => (string)$ev['title'],
+                'subtitle'  => thai_date($ev['start_datetime'], false, true),
+                'badge'     => 'กิจกรรมหน่วยงาน',
+                'rows'      => [
+                    ['label' => 'เวลา',    'value' => $evTime],
+                    ['label' => 'สถานที่', 'value' => (string)($ev['location'] ?: '-')],
+                ],
+                'noteTitle' => 'รายละเอียด',
+                'note'      => (string)($ev['description'] ?: ''),
+                'links'     => [
+                    ['label' => 'เปิดปฏิทินหลัก', 'href' => app_url('/calendar.php'), 'variant' => 'primary'],
+                ],
+            ],
+        ];
+    }
+
+    $bkSql = "SELECT b.id, b.reference_code, b.booking_type, b.title, b.purpose, b.start_datetime, b.end_datetime, b.destination, r.room_code, r.name AS room_name
+              FROM bookings b
+              LEFT JOIN rooms r ON r.id = b.room_id
+              WHERE b.status = 'approved' AND b.end_datetime >= NOW()";
+    $bkParams = [];
+    if (!$isPrivilegedViewer) {
+        $bkSql .= ' AND b.requester_id = :uid';
+        $bkParams[':uid'] = $uid;
+    }
+    $bkSql .= ' ORDER BY b.start_datetime ASC LIMIT 4';
+    $stmtBkSched = $pdo->prepare($bkSql);
+    $stmtBkSched->execute($bkParams);
+    foreach ($stmtBkSched->fetchAll() as $bk) {
+        $isRm = ($bk['booking_type'] === 'room');
+        $place = $isRm ? trim(($bk['room_code'] ?? '') . ' ' . ($bk['room_name'] ?? '')) : (string)($bk['destination'] ?: '-');
+        $bkTime = date('H:i', strtotime($bk['start_datetime'])) . ' – ' . date('H:i', strtotime($bk['end_datetime'])) . ' น.';
+        $rawSchedule[] = [
+            'sort_ts'  => (string)$bk['start_datetime'],
+            'color'    => $isRm ? '#2563EB' : '#059669',
+            'category' => $isRm ? 'ห้องประชุม' : 'ยานพาหนะ',
+            'title'    => (string)$bk['title'],
+            'meta'     => $bkTime . ($place !== '' ? ' · ' . $place : ''),
+            'detail'   => [
+                'title'     => (string)$bk['title'],
+                'subtitle'  => $bk['reference_code'] . ' · อนุมัติแล้ว',
+                'badge'     => $isRm ? 'จองห้องประชุม' : 'จองยานพาหนะ',
+                'rows'      => [
+                    ['label' => 'วันเวลา', 'value' => thai_date($bk['start_datetime'], true, true) . ' – ' . date('H:i', strtotime($bk['end_datetime'])) . ' น.'],
+                    ['label' => $isRm ? 'ห้องประชุม' : 'ปลายทาง', 'value' => $place ?: '-'],
+                ],
+                'noteTitle' => 'วัตถุประสงค์',
+                'note'      => (string)($bk['purpose'] ?: ''),
+                'links'     => [
+                    ['label' => 'ดูไทม์ไลน์คำขอ', 'href' => app_url('/booking_detail.php?id=' . (int)$bk['id']), 'variant' => 'primary'],
+                    ['label' => 'เปิดปฏิทินหลัก', 'href' => app_url('/calendar.php'), 'variant' => 'secondary'],
+                ],
+            ],
+        ];
+    }
+
+    usort($rawSchedule, static fn (array $a, array $b): int => strcmp($a['sort_ts'], $b['sort_ts']));
+    $rawSchedule = array_slice($rawSchedule, 0, 4);
+
+    foreach ($rawSchedule as $sc) {
+        $ts = strtotime($sc['sort_ts']);
+        $dayNum = $ts ? (int)date('j', $ts) : 1;
+        $monNum = $ts ? (int)date('n', $ts) : 1;
+        $scheduleItems[] = [
+            'day'      => (string)$dayNum,
+            'month'    => $shortThaiMonths[$monNum] ?? '',
+            'color'    => $sc['color'],
+            'category' => $sc['category'],
+            'title'    => $sc['title'],
+            'meta'     => $sc['meta'],
+            'detail'   => $sc['detail'],
+        ];
     }
 } catch (Throwable $e) {
     // Keep safe empty defaults on query failure
@@ -182,22 +341,22 @@ try {
 
 $kpiCards = match ($viewMode) {
     'executive', 'approver_head' => [
-        ['label' => 'รออนุมัติ',   'value' => $pendingCount,               'icon' => 'bi-hourglass-split',   'color' => 'kpi-icon-amber'],
-        ['label' => 'อนุมัติแล้ว', 'value' => $stats['approved_bookings'], 'icon' => 'bi-check-circle-fill', 'color' => 'kpi-icon-emerald'],
-        ['label' => 'ห้องประชุม',  'value' => $stats['rooms'],             'icon' => 'bi-door-open-fill',    'color' => 'kpi-icon-blue'],
-        ['label' => 'งานแจ้งซ่อม', 'value' => $stats['open_maint'],        'icon' => 'bi-wrench-adjustable', 'color' => 'kpi-icon-indigo'],
+        ['label' => 'รออนุมัติ',   'value' => $pendingCount,               'icon' => 'bi-hourglass-split',   'color' => 'kpi-icon-amber',   'accent' => 'kpi-accent-amber',   'href' => app_url('/approvals.php')],
+        ['label' => 'อนุมัติแล้ว', 'value' => $stats['approved_bookings'], 'icon' => 'bi-check-circle-fill', 'color' => 'kpi-icon-emerald', 'accent' => 'kpi-accent-emerald', 'href' => app_url('/dashboard.php')],
+        ['label' => 'ห้องประชุม',  'value' => $stats['rooms'],             'icon' => 'bi-door-open-fill',    'color' => 'kpi-icon-blue',    'accent' => 'kpi-accent-blue',    'href' => app_url('/calendar.php')],
+        ['label' => 'งานแจ้งซ่อม', 'value' => $stats['open_maint'],        'icon' => 'bi-wrench-adjustable', 'color' => 'kpi-icon-indigo',  'accent' => 'kpi-accent-indigo',  'href' => app_url(in_array($role, [ROLE_STAFF, ROLE_ADMIN], true) ? '/maintenance_manage.php' : '/maintenance.php')],
     ],
     'operational_staff' => [
-        ['label' => 'รอจัดรถ',     'value' => $pendingCount,            'icon' => 'bi-truck-front-fill',  'color' => 'kpi-icon-amber'],
-        ['label' => 'งานซ่อมค้าง',   'value' => $stats['open_maint'],     'icon' => 'bi-tools',             'color' => 'kpi-icon-indigo'],
-        ['label' => 'กำลังถูกยืม',   'value' => $stats['active_borrows'], 'icon' => 'bi-key-fill',          'color' => 'kpi-icon-emerald'],
-        ['label' => 'รถพร้อมใช้',   'value' => $stats['vehicles'],       'icon' => 'bi-car-front-fill',    'color' => 'kpi-icon-blue'],
+        ['label' => 'รอจัดรถ',     'value' => $pendingCount,            'icon' => 'bi-truck-front-fill', 'color' => 'kpi-icon-amber',   'accent' => 'kpi-accent-amber',   'href' => app_url('/approvals.php')],
+        ['label' => 'งานซ่อมค้าง', 'value' => $stats['open_maint'],     'icon' => 'bi-tools',            'color' => 'kpi-icon-indigo',  'accent' => 'kpi-accent-indigo',  'href' => app_url('/maintenance_manage.php')],
+        ['label' => 'กำลังถูกยืม', 'value' => $stats['active_borrows'], 'icon' => 'bi-key-fill',         'color' => 'kpi-icon-emerald', 'accent' => 'kpi-accent-emerald', 'href' => app_url('/dashboard.php')],
+        ['label' => 'รถพร้อมใช้',  'value' => $stats['vehicles'],       'icon' => 'bi-car-front-fill',   'color' => 'kpi-icon-blue',    'accent' => 'kpi-accent-blue',    'href' => app_url('/calendar.php')],
     ],
     default => [
-        ['label' => 'คำขอทั้งหมด',  'value' => $stats['my_bookings'], 'icon' => 'bi-card-checklist', 'color' => 'kpi-icon-indigo'],
-        ['label' => 'รอพิจารณา',    'value' => $stats['my_pending'],  'icon' => 'bi-clock-history',  'color' => 'kpi-icon-amber'],
-        ['label' => 'อนุมัติแล้ว',   'value' => $stats['my_approved'], 'icon' => 'bi-check2-circle',  'color' => 'kpi-icon-emerald'],
-        ['label' => 'ห้องประชุม',   'value' => ($role === ROLE_EXTERNAL_USER ? $stats['external_rooms'] : $stats['rooms']), 'icon' => 'bi-door-open-fill', 'color' => 'kpi-icon-blue'],
+        ['label' => 'คำขอทั้งหมด', 'value' => $stats['my_bookings'], 'icon' => 'bi-card-checklist', 'color' => 'kpi-icon-indigo',  'accent' => 'kpi-accent-indigo',  'href' => app_url('/my_bookings.php')],
+        ['label' => 'รอพิจารณา',   'value' => $stats['my_pending'],  'icon' => 'bi-clock-history',  'color' => 'kpi-icon-amber',   'accent' => 'kpi-accent-amber',   'href' => app_url('/my_bookings.php')],
+        ['label' => 'อนุมัติแล้ว',  'value' => $stats['my_approved'], 'icon' => 'bi-check2-circle',  'color' => 'kpi-icon-emerald', 'accent' => 'kpi-accent-emerald', 'href' => app_url('/my_bookings.php')],
+        ['label' => 'ห้องประชุม',  'value' => ($role === ROLE_EXTERNAL_USER ? $stats['external_rooms'] : $stats['rooms']), 'icon' => 'bi-door-open-fill', 'color' => 'kpi-icon-blue', 'accent' => 'kpi-accent-blue', 'href' => app_url('/book_room.php')],
     ],
 };
 
@@ -217,57 +376,29 @@ $priorityEmptyText = match ($viewMode) {
     default                      => 'ยังไม่มีรายการคำขอจอง',
 };
 
-$shortDescriptions = [
-    'calendar'           => 'ดูตารางการใช้ห้องและรถ',
-    'book_room'          => 'ขอใช้ห้องประชุม/สถานที่',
-    'book_vehicle'       => 'ขอใช้รถยนต์ราชการ',
-    'my_bookings'        => 'ติดตามสถานะคำขอ',
-    'approvals'          => 'อนุมัติคำขอในระบบ',
-    'maintenance'        => 'แจ้งอุปกรณ์หรือสถานที่ชำรุด',
-    'maintenance_manage' => 'อัปเดตสถานะงานซ่อม',
-    'assets_borrow'      => 'ยืมและคืนพัสดุ/กุญแจ',
-    'qr_codes'           => 'สร้าง QR ประจำห้อง/อุปกรณ์',
-    'dashboard'          => 'ดูสรุปสถิติและกราฟ',
-    'users_manage'       => 'เพิ่มและกำหนดสิทธิ์ผู้ใช้',
-];
-
-$iconColorMap = [
-    'calendar'           => 'icon-box-blue',
-    'book_room'          => 'icon-box-indigo',
-    'book_vehicle'       => 'icon-box-teal',
-    'my_bookings'        => 'icon-box-cyan',
-    'approvals'          => 'icon-box-amber',
-    'maintenance'        => 'icon-box-rose',
-    'maintenance_manage' => 'icon-box-orange',
-    'assets_borrow'      => 'icon-box-emerald',
-    'qr_codes'           => 'icon-box-purple',
-    'dashboard'          => 'icon-box-slate',
-    'users_manage'       => 'icon-box-blue',
-];
-
 $welcomeInitial = mb_substr((string)$user['full_name'], 0, 1, 'UTF-8') ?: 'U';
 
 require __DIR__ . '/includes/layout_header.php';
 ?>
-<!-- Zone 1: Clean Welcome Header Card -->
-<div class="welcome-card p-3 p-md-4 mb-4">
-    <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+<!-- Zone 1: Gradient Hero Header -->
+<div class="home-hero p-3 p-md-4 mb-4">
+    <div class="home-hero-inner d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
         <div class="d-flex align-items-center gap-3 min-w-0">
-            <div class="welcome-avatar d-none d-sm-inline-flex"><?= e($welcomeInitial) ?></div>
+            <div class="home-hero-avatar d-none d-sm-inline-flex"><?= e($welcomeInitial) ?></div>
             <div class="min-w-0">
-                <div class="small text-muted mb-1">
+                <div class="small text-white text-opacity-75 mb-1">
                     <i class="bi bi-calendar3 me-1"></i><?= e($todayThai) ?> · <?= e($appOrgName) ?>
                 </div>
-                <h1 class="h4 fw-bold text-dark mb-2" data-testid="portal-heading">
+                <h1 class="h4 fw-bold text-white mb-2" data-testid="portal-heading">
                     สวัสดี, <?= e($user['full_name']) ?>
                 </h1>
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <span class="welcome-role-badge">
+                    <span class="home-hero-role-pill">
                         <i class="bi bi-person-check-fill"></i>
                         <?= e($roleLabel) ?>
                     </span>
                     <?php if ($userOrgOrDept !== ''): ?>
-                        <span class="small text-muted"><?= e($userOrgOrDept) ?></span>
+                        <span class="small text-white text-opacity-75"><?= e($userOrgOrDept) ?></span>
                     <?php endif; ?>
                 </div>
             </div>
@@ -276,254 +407,170 @@ require __DIR__ . '/includes/layout_header.php';
         <div class="d-flex flex-wrap align-items-center gap-2 flex-shrink-0">
             <?php if ($pendingCount > 0): ?>
                 <a href="<?= e(app_url('/approvals.php')) ?>"
-                   class="btn btn-warning fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 shadow-sm"
+                   class="btn btn-hero-amber fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3"
                    data-testid="pending-approval-banner">
                     <i class="bi bi-bell-fill"></i>
                     <span>มีคำขอรอพิจารณา <?= (int)$pendingCount ?> รายการ</span>
                 </a>
             <?php endif; ?>
 
-            <?php if ($role === ROLE_ADMIN): ?>
-                <button type="button"
-                        class="btn btn-outline-primary bg-white fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3"
-                        data-bs-toggle="modal"
-                        data-bs-target="#quickAddUserModal"
-                        data-testid="btn-quick-add-user">
-                    <i class="bi bi-person-plus-fill"></i>
-                    <span>เพิ่มผู้ใช้งาน</span>
-                </button>
-            <?php endif; ?>
-
             <?php if ($viewMode === 'executive'): ?>
                 <a href="<?= e(app_url('/dashboard.php')) ?>"
-                   class="btn btn-primary-gradient fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3">
+                   class="btn btn-hero-white fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3">
                     <i class="bi bi-speedometer2"></i>
                     <span>เปิดแดชบอร์ดผู้บริหาร</span>
                 </a>
             <?php elseif ($viewMode === 'approver_head' && $pendingCount === 0): ?>
                 <a href="<?= e(app_url('/approvals.php')) ?>"
-                   class="btn btn-primary-gradient fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3">
+                   class="btn btn-hero-white fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3">
                     <i class="bi bi-check2-square"></i>
                     <span>พิจารณาอนุมัติ</span>
                 </a>
             <?php elseif ($viewMode === 'operational_staff'): ?>
                 <a href="<?= e(app_url('/maintenance_manage.php')) ?>"
-                   class="btn btn-primary-gradient fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3">
+                   class="btn btn-hero-white fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3">
                     <i class="bi bi-tools"></i>
                     <span>จัดการงานซ่อม</span>
                 </a>
             <?php elseif ($viewMode === 'requester'): ?>
                 <a href="<?= e(app_url('/book_room.php')) ?>"
-                   class="btn btn-primary-gradient fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3">
+                   class="btn btn-hero-white fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3">
                     <i class="bi bi-plus-circle"></i>
                     <span><?= $role === ROLE_EXTERNAL_USER ? 'ขอจองห้องประชุม' : 'จองห้องประชุม' ?></span>
                 </a>
             <?php endif; ?>
-        </div>
-    </div>
-</div>
 
-<!-- Zone 2: 4 Clean Big-Number KPI Cards -->
-<div class="row g-2 g-sm-3 mb-4">
-    <?php foreach ($kpiCards as $kpi): ?>
-        <div class="col-6 col-xl-3">
-            <div class="kpi-card p-3 h-100 d-flex align-items-center gap-3">
-                <div class="kpi-icon <?= e($kpi['color']) ?>">
-                    <i class="bi <?= e($kpi['icon']) ?>"></i>
-                </div>
-                <div class="min-w-0 flex-grow-1">
-                    <div class="kpi-label text-truncate mb-1"><?= e($kpi['label']) ?></div>
-                    <div class="fs-3 fw-bold text-dark lh-1"><?= (int)$kpi['value'] ?></div>
-                </div>
-            </div>
-        </div>
-    <?php endforeach; ?>
-</div>
-
-<!-- Zone 3A: Single Focused Priority List -->
-<div class="spotlight-card mb-4" data-testid="role-spotlight">
-    <div class="spotlight-header">
-        <h2 class="h6 fw-bold mb-0 text-dark d-flex align-items-center gap-2">
-            <i class="bi bi-stars text-primary"></i>
-            <span><?= e($priorityTitle) ?></span>
-        </h2>
-        <a href="<?= e($priorityAllHref) ?>" class="small fw-semibold text-decoration-none">
-            ดูทั้งหมด <i class="bi bi-arrow-right ms-1"></i>
-        </a>
-    </div>
-
-    <?php if (empty($priorityItems)): ?>
-        <div class="p-4 text-center text-muted">
-            <i class="bi bi-check-circle text-success fs-3 d-block mb-2"></i>
-            <div class="small"><?= e($priorityEmptyText) ?></div>
-            <?php if ($viewMode === 'requester'): ?>
-                <a href="<?= e(app_url('/book_room.php')) ?>" class="btn btn-sm btn-outline-primary rounded-pill px-3 mt-2">
-                    จองห้องประชุมเลย
+            <?php if ($role === ROLE_ADMIN): ?>
+                <a href="<?= e(app_url('/users_manage.php?add=1')) ?>"
+                   class="btn btn-hero-glass fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3"
+                   data-testid="btn-quick-add-user">
+                    <i class="bi bi-person-plus-fill"></i>
+                    <span>เพิ่มผู้ใช้งาน</span>
                 </a>
             <?php endif; ?>
         </div>
-    <?php else: ?>
-        <?php foreach ($priorityItems as $item): ?>
-            <div class="role-queue-item">
-                <div class="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
-                    <div class="d-flex align-items-center gap-3 min-w-0">
-                        <div class="portal-icon-box <?= e($item['iconBox']) ?>" style="width: 42px; height: 42px; font-size: 1.15rem;">
-                            <i class="bi <?= e($item['icon']) ?>"></i>
-                        </div>
-                        <div class="min-w-0">
-                            <div class="fw-semibold text-dark text-truncate"><?= e($item['title']) ?></div>
-                            <div class="small text-muted text-truncate"><?= e($item['subtitle']) ?></div>
-                        </div>
-                    </div>
-
-                    <div class="d-flex align-items-center gap-2 flex-shrink-0 align-self-end align-self-sm-center">
-                        <span class="badge rounded-pill text-bg-<?= e($item['badgeClass']) ?> px-3 py-2 fw-medium">
-                            <?= e($item['badgeLabel']) ?>
-                        </span>
-                        <a href="<?= e($item['ctaHref']) ?>" class="btn btn-sm btn-outline-primary rounded-3 px-3">
-                            <?= e($item['ctaLabel']) ?>
-                        </a>
-                    </div>
-                </div>
-            </div>
-        <?php endforeach; ?>
-    <?php endif; ?>
+    </div>
 </div>
 
-<!-- Zone 3B: Clean Menu Grid -->
-<div class="d-flex align-items-center justify-content-between mb-3">
-    <h2 class="h6 fw-bold text-secondary mb-0">เมนูลัด</h2>
-    <span class="small text-muted"><?= count($menuItems) ?> รายการ</span>
-</div>
-
-<div class="row g-3" data-testid="portal-quick-actions">
-    <?php foreach ($menuItems as $item):
-        $iconClass = $iconColorMap[$item['key']] ?? 'icon-box-blue';
-    ?>
-        <div class="col-12 col-sm-6 col-xl-4">
-            <a href="<?= e($item['href']) ?>"
-               class="card h-100 text-decoration-none text-dark portal-card"
-               data-testid="card-<?= e($item['key']) ?>">
-                <div class="card-body d-flex align-items-center gap-3 p-3">
-                    <div class="portal-icon-box <?= e($iconClass) ?>" style="width: 46px; height: 46px; font-size: 1.25rem;">
-                        <i class="bi <?= e($item['icon']) ?>"></i>
+<!-- Zone 2: 4 Clickable KPI Stat Cards -->
+<div class="row g-2 g-sm-3 mb-4">
+    <?php foreach ($kpiCards as $kpi): ?>
+        <div class="col-6 col-xl-3">
+            <a href="<?= e($kpi['href']) ?>" class="kpi-link-card">
+                <div class="kpi-card <?= e($kpi['accent']) ?> p-3 h-100 d-flex align-items-center gap-3">
+                    <div class="kpi-icon <?= e($kpi['color']) ?>">
+                        <i class="bi <?= e($kpi['icon']) ?>"></i>
                     </div>
-                    <div class="flex-grow-1 min-w-0">
-                        <div class="d-flex align-items-center gap-2">
-                            <h3 class="h6 fw-bold mb-0 text-dark text-truncate"><?= e($item['label']) ?></h3>
-                            <?php if (!empty($item['badge'])): ?>
-                                <span class="badge rounded-pill text-bg-danger"><?= (int)$item['badge'] ?></span>
-                            <?php endif; ?>
-                        </div>
-                        <div class="text-muted small text-truncate"><?= e($shortDescriptions[$item['key']] ?? '') ?></div>
+                    <div class="min-w-0 flex-grow-1">
+                        <div class="kpi-label text-truncate mb-1"><?= e($kpi['label']) ?></div>
+                        <div class="fs-3 fw-bold text-dark lh-1"><?= (int)$kpi['value'] ?></div>
                     </div>
-                    <i class="bi bi-chevron-right portal-arrow flex-shrink-0"></i>
                 </div>
             </a>
         </div>
     <?php endforeach; ?>
 </div>
 
-<?php if ($role === ROLE_ADMIN): ?>
-<!-- Quick Add User Modal for Admin -->
-<div class="modal fade" id="quickAddUserModal" tabindex="-1" aria-labelledby="quickAddUserModalTitle" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-            <div class="modal-header border-bottom bg-light px-4 py-3">
-                <h5 class="modal-title fw-bold d-flex align-items-center gap-2" id="quickAddUserModalTitle">
-                    <span class="portal-icon-box icon-box-blue" style="width: 36px; height: 36px; font-size: 1rem;">
-                        <i class="bi bi-person-plus-fill"></i>
-                    </span>
-                    <span>เพิ่มผู้ใช้งานใหม่</span>
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
+<!-- Zone 3: 2-Column Workspace (Priority Queue + Upcoming Schedule) -->
+<div class="row g-3 g-lg-4">
+    <div class="col-12 col-lg-7">
+        <div class="spotlight-card h-100" data-testid="role-spotlight">
+            <div class="spotlight-header">
+                <h2 class="h6 fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                    <i class="bi bi-stars text-primary"></i>
+                    <span><?= e($priorityTitle) ?></span>
+                </h2>
+                <a href="<?= e($priorityAllHref) ?>" class="small fw-semibold text-decoration-none">
+                    ดูทั้งหมด <i class="bi bi-arrow-right ms-1"></i>
+                </a>
             </div>
-            <form method="post" action="<?= e(app_url('/users_manage.php')) ?>">
-                <?= csrf_field() ?>
-                <input type="hidden" name="action" value="create_user">
-                <div class="modal-body p-4">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label for="q_user_type" class="form-label fw-semibold small text-secondary">ประเภทผู้ใช้งาน <span class="text-danger">*</span></label>
-                            <select class="form-select touch-target" id="q_user_type" name="user_type">
-                                <option value="internal" selected>บุคลากรภายในหน่วยงาน</option>
-                                <option value="external">บุคคล / หน่วยงานภายนอก</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label for="q_role" class="form-label fw-semibold small text-secondary">บทบาทสิทธิ์ (Role) <span class="text-danger">*</span></label>
-                            <select class="form-select touch-target" id="q_role" name="role">
-                                <option value="user">บุคลากรภายใน</option>
-                                <option value="head">หัวหน้างาน</option>
-                                <option value="vice_director">รองผู้อำนวยการ</option>
-                                <option value="director">ผู้อำนวยการ</option>
-                                <option value="staff">เจ้าหน้าที่บริหาร/ช่าง</option>
-                                <option value="admin">ผู้ดูแลระบบ</option>
-                                <option value="external_user">บุคคลภายนอก</option>
-                            </select>
-                        </div>
-                        <div class="col-md-8">
-                            <label for="q_full_name" class="form-label fw-semibold small text-secondary">ชื่อ-นามสกุล <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control touch-target" id="q_full_name" name="full_name" placeholder="เช่น นายสมศักดิ์ รักงาน" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label for="q_staff_id" class="form-label fw-semibold small text-secondary">รหัสพนักงาน</label>
-                            <input type="text" class="form-control touch-target" id="q_staff_id" name="staff_id" placeholder="เช่น EMP003">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="q_username" class="form-label fw-semibold small text-secondary">ชื่อผู้ใช้ (Username) <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control touch-target" id="q_username" name="username" placeholder="เช่น user03" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label for="q_email" class="form-label fw-semibold small text-secondary">อีเมล <span class="text-danger">*</span></label>
-                            <input type="email" class="form-control touch-target" id="q_email" name="email" placeholder="name@slp.local" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label for="q_password" class="form-label fw-semibold small text-secondary">รหัสผ่าน (อย่างน้อย 8 ตัวอักษร) <span class="text-danger">*</span></label>
-                            <input type="password" class="form-control touch-target" id="q_password" name="password" minlength="8" placeholder="กำหนดรหัสผ่านเริ่มต้น" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label for="q_phone" class="form-label fw-semibold small text-secondary">เบอร์โทรศัพท์</label>
-                            <input type="tel" class="form-control touch-target" id="q_phone" name="phone" placeholder="08x-xxx-xxxx">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="q_department" class="form-label fw-semibold small text-secondary">ฝ่าย / กลุ่มงาน</label>
-                            <input type="text" class="form-control touch-target" id="q_department" name="department" placeholder="เช่น ฝ่ายบริหารทั่วไป">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="q_organization" class="form-label fw-semibold small text-secondary">หน่วยงาน / องค์กร</label>
-                            <input type="text" class="form-control touch-target" id="q_organization" name="organization" value="<?= e($appOrgName) ?>">
+
+            <?php if (empty($priorityItems)): ?>
+                <div class="p-4 text-center text-muted">
+                    <i class="bi bi-check-circle text-success fs-3 d-block mb-2"></i>
+                    <div class="small"><?= e($priorityEmptyText) ?></div>
+                    <?php if ($viewMode === 'requester'): ?>
+                        <a href="<?= e(app_url('/book_room.php')) ?>" class="btn btn-sm btn-soft-primary rounded-pill px-3 mt-2">
+                            จองห้องประชุมเลย
+                        </a>
+                    <?php endif; ?>
+                </div>
+            <?php else: ?>
+                <?php foreach ($priorityItems as $item): ?>
+                    <div class="role-queue-item">
+                        <div class="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
+                            <div class="d-flex align-items-center gap-3 min-w-0">
+                                <div class="portal-icon-box <?= e($item['iconBox']) ?>" style="width: 42px; height: 42px; font-size: 1.15rem;">
+                                    <i class="bi <?= e($item['icon']) ?>"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="fw-semibold text-dark text-truncate"><?= e($item['title']) ?></div>
+                                    <div class="small text-muted text-truncate"><?= e($item['subtitle']) ?></div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex align-items-center gap-2 flex-shrink-0 align-self-end align-self-sm-center">
+                                <span class="badge rounded-pill text-bg-<?= e($item['badgeClass']) ?> px-3 py-2 fw-medium">
+                                    <?= e($item['badgeLabel']) ?>
+                                </span>
+                                <?php if (!empty($item['detail'])): ?>
+                                    <button type="button"
+                                            class="btn btn-sm btn-soft-secondary rounded-3 px-2"
+                                            data-swal-detail="<?= e((string)json_encode($item['detail'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>"
+                                            title="ดูรายละเอียดเร็ว">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                <?php endif; ?>
+                                <a href="<?= e($item['ctaHref']) ?>" class="btn btn-sm btn-soft-primary rounded-3 px-3 fw-semibold">
+                                    <?= e($item['ctaLabel']) ?>
+                                </a>
+                            </div>
                         </div>
                     </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-5">
+        <div class="spotlight-card h-100" data-testid="home-upcoming-schedule">
+            <div class="spotlight-header">
+                <h2 class="h6 fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                    <i class="bi bi-calendar-event text-primary"></i>
+                    <span>กำหนดการและกิจกรรมเร็ว ๆ นี้</span>
+                </h2>
+                <a href="<?= e(app_url('/calendar.php')) ?>" class="small fw-semibold text-decoration-none">
+                    ปฏิทินทั้งหมด <i class="bi bi-arrow-right ms-1"></i>
+                </a>
+            </div>
+
+            <?php if (empty($scheduleItems)): ?>
+                <div class="p-4 text-center text-muted small">
+                    <i class="bi bi-calendar-x fs-3 d-block mb-2 text-secondary"></i>
+                    ยังไม่มีกำหนดการเร็ว ๆ นี้
                 </div>
-                <div class="modal-footer border-top bg-light px-4 py-3">
-                    <a href="<?= e(app_url('/users_manage.php')) ?>" class="btn btn-link text-decoration-none me-auto small">ไปหน้าจัดการผู้ใช้ทั้งหมด</a>
-                    <button type="button" class="btn btn-outline-secondary touch-target rounded-3 px-3" data-bs-dismiss="modal">ยกเลิก</button>
-                    <button type="submit" class="btn btn-primary-gradient touch-target rounded-3 px-4 fw-semibold">
-                        <i class="bi bi-check-lg me-1"></i>บันทึกผู้ใช้งาน
+            <?php else: ?>
+                <?php foreach ($scheduleItems as $sc): ?>
+                    <button type="button"
+                            class="role-queue-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-3"
+                            data-swal-detail="<?= e((string)json_encode($sc['detail'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>">
+                        <div class="mini-cal-badge">
+                            <span class="mini-cal-day"><?= e($sc['day']) ?></span>
+                            <span class="mini-cal-month"><?= e($sc['month']) ?></span>
+                        </div>
+                        <div class="min-w-0 flex-grow-1">
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <span style="width: 8px; height: 8px; border-radius: 50%; background: <?= e($sc['color']) ?>; display: inline-block; flex-shrink: 0;"></span>
+                                <span class="text-muted" style="font-size: 0.74rem;"><?= e($sc['category']) ?></span>
+                            </div>
+                            <div class="fw-semibold text-dark text-truncate small"><?= e($sc['title']) ?></div>
+                            <div class="small text-muted text-truncate"><?= e($sc['meta']) ?></div>
+                        </div>
+                        <i class="bi bi-chevron-right text-muted small flex-shrink-0"></i>
                     </button>
-                </div>
-            </form>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </div>
     </div>
 </div>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const t = document.getElementById('q_user_type');
-    const r = document.getElementById('q_role');
-    const s = document.getElementById('q_staff_id');
-    if (!t || !r || !s) return;
-    function syncQ() {
-        const ext = t.value === 'external';
-        if (ext) { r.value = 'external_user'; s.value = ''; s.disabled = true; }
-        else { if (r.value === 'external_user') r.value = 'user'; s.disabled = false; }
-        Array.from(r.options).forEach(function (o) {
-            o.disabled = ext ? (o.value !== 'external_user') : (o.value === 'external_user');
-        });
-    }
-    t.addEventListener('change', syncQ);
-    syncQ();
-});
-</script>
-<?php endif; ?>
 <?php require __DIR__ . '/includes/layout_footer.php'; ?>
