@@ -176,6 +176,29 @@
             html += '</div>';
         }
 
+        if (Array.isArray(d.photos) && d.photos.length > 0) {
+            const validPhotos = d.photos.filter(function (ph) { return ph && ph.url; });
+            if (validPhotos.length === 1) {
+                const ph = validPhotos[0];
+                const url = safeHref(ph.url);
+                html += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" class="slp-swal-hero-wrap mb-3">'
+                    + '<img src="' + escapeHtml(url) + '" alt="' + escapeHtml(ph.label || 'รูปภาพ') + '" class="slp-swal-hero-photo">'
+                    + '<span class="slp-swal-photo-caption"><i class="bi bi-image me-1"></i>' + escapeHtml(ph.label || 'รูปภาพ') + '</span>'
+                    + '</a>';
+            } else if (validPhotos.length > 1) {
+                html += '<div class="slp-swal-photo-grid mb-3">';
+                validPhotos.forEach(function (ph) {
+                    const url = safeHref(ph.url);
+                    html += '<div>'
+                        + '<div class="small fw-semibold text-muted mb-1">' + escapeHtml(ph.label || 'รูปภาพ') + '</div>'
+                        + '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" class="d-block">'
+                        + '<img src="' + escapeHtml(url) + '" alt="' + escapeHtml(ph.label || 'รูปภาพ') + '" class="slp-swal-photo">'
+                        + '</a></div>';
+                });
+                html += '</div>';
+            }
+        }
+
         if (Array.isArray(d.rows) && d.rows.length > 0) {
             html += '<div class="slp-swal-detail-list">';
             d.rows.forEach(function (row) {
@@ -212,20 +235,6 @@
                     html += '<div class="text-dark mt-1">“' + escapeHtml(item.comment) + '”</div>';
                 }
                 html += '</div>';
-            });
-            html += '</div>';
-        }
-
-        if (Array.isArray(d.photos) && d.photos.length > 0) {
-            html += '<div class="row g-2 mb-3">';
-            d.photos.forEach(function (ph) {
-                if (!ph || !ph.url) return;
-                const url = safeHref(ph.url);
-                html += '<div class="col-12 col-sm-6">'
-                    + '<div class="small fw-semibold text-muted mb-1">' + escapeHtml(ph.label || 'รูปภาพ') + '</div>'
-                    + '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">'
-                    + '<img src="' + escapeHtml(url) + '" alt="' + escapeHtml(ph.label || 'รูปภาพ') + '" class="slp-swal-photo">'
-                    + '</a></div>';
             });
             html += '</div>';
         }

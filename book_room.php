@@ -314,15 +314,17 @@ require __DIR__ . '/includes/layout_header.php';
                                         <?php else: ?>
                                             <i class="bi bi-door-open-fill"></i>
                                         <?php endif; ?>
+                                        <span class="room-picker-thumb-cap">รองรับ <?= (int)$r['capacity'] ?> คน</span>
                                     </span>
-                                    <span class="min-w-0 flex-grow-1">
-                                        <span class="d-block fw-semibold text-dark small text-truncate"><?= e($r['name']) ?></span>
-                                        <span class="d-block text-muted text-truncate" style="font-size: 0.74rem;"><?= e($locSub) ?></span>
-                                        <span class="d-inline-flex align-items-center gap-1 mt-1">
-                                            <span class="badge text-bg-light border text-secondary" style="font-size: 0.68rem;">รองรับ <?= (int)$r['capacity'] ?> คน</span>
+                                    <span class="room-picker-body d-block">
+                                        <span class="d-flex align-items-center justify-content-between gap-1 mb-1">
+                                            <span class="fw-semibold text-dark small text-truncate"><?= e($r['name']) ?></span>
                                             <?php if ((int)$r['allow_external'] === 1): ?>
-                                                <span class="badge text-bg-info text-dark" style="font-size: 0.68rem;">ภายนอก</span>
+                                                <span class="badge text-bg-info text-dark flex-shrink-0" style="font-size: 0.65rem;">ภายนอก</span>
                                             <?php endif; ?>
+                                        </span>
+                                        <span class="d-block text-muted text-truncate" style="font-size: 0.74rem;">
+                                            <i class="bi bi-building me-1"></i><?= e($locSub) ?>
                                         </span>
                                     </span>
                                 </button>
@@ -438,7 +440,7 @@ require __DIR__ . '/includes/layout_header.php';
             $initRoom = $roomsMeta[$initRoomId] ?? (!empty($roomsMeta) ? reset($roomsMeta) : null);
             $initImg = $initRoom ? (string)$initRoom['image_url'] : '';
         ?>
-        <div class="spotlight-card mb-4 overflow-hidden" id="selectedRoomPreviewCard" data-testid="room-preview-card">
+        <div class="spotlight-card room-preview-card mb-4 overflow-hidden" id="selectedRoomPreviewCard" data-testid="room-preview-card">
             <div class="room-preview-hero">
                 <img src="<?= e($initImg) ?>"
                      alt="<?= e($initRoom['name'] ?? 'ตัวอย่างห้องประชุม') ?>"
