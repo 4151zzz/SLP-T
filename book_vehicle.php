@@ -298,29 +298,40 @@ require __DIR__ . '/includes/layout_header.php';
             <div class="spotlight-header">
                 <h2 class="h6 fw-bold mb-0"><i class="bi bi-car-front text-success me-1"></i>รถราชการพร้อมบริการ</h2>
             </div>
-            <?php foreach ($vehicles as $v):
-                $vehDetail = [
-                    'title'    => $v['vehicle_code'] . ' · ' . $v['brand_model'],
-                    'subtitle' => $v['vehicle_type'],
-                    'badge'    => 'พร้อมให้บริการ',
-                    'rows'     => [
-                        ['label' => 'ทะเบียนรถ', 'value' => (string)$v['plate_number']],
-                        ['label' => 'จำนวนที่นั่ง', 'value' => (int)$v['seats'] . ' ที่นั่ง'],
-                    ],
-                    'noteTitle' => 'หมายเหตุ',
-                    'note'      => (string)($v['notes'] ?: ''),
-                ];
-            ?>
-                <button type="button"
-                        class="role-queue-item w-100 text-start border-0 bg-transparent d-flex align-items-center justify-content-between gap-2"
-                        data-swal-detail="<?= e((string)json_encode($vehDetail, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>">
-                    <div class="min-w-0">
-                        <div class="fw-semibold text-dark small"><?= e($v['vehicle_type'] . ' · ' . $v['brand_model']) ?></div>
-                        <div class="small text-muted">ทะเบียน <?= e($v['plate_number']) ?> · <?= (int)$v['seats'] ?> ที่นั่ง</div>
-                    </div>
-                    <i class="bi bi-info-circle text-primary small flex-shrink-0"></i>
-                </button>
-            <?php endforeach; ?>
+            <?php if (empty($vehicles)): ?>
+                <div class="p-4 text-center text-muted small">
+                    <div class="mb-2">ยังไม่มีข้อมูลยานพาหนะพร้อมบริการในระบบ</div>
+                    <?php if (has_role(ROLE_ADMIN, $user)): ?>
+                        <a href="<?= e(app_url('/resources_manage.php?tab=vehicles')) ?>" class="btn btn-sm btn-soft-primary rounded-3">
+                            <i class="bi bi-plus-circle me-1"></i>เพิ่มยานพาหนะ
+                        </a>
+                    <?php endif; ?>
+                </div>
+            <?php else: ?>
+                <?php foreach ($vehicles as $v):
+                    $vehDetail = [
+                        'title'    => $v['vehicle_code'] . ' · ' . $v['brand_model'],
+                        'subtitle' => $v['vehicle_type'],
+                        'badge'    => 'พร้อมให้บริการ',
+                        'rows'     => [
+                            ['label' => 'ทะเบียนรถ', 'value' => (string)$v['plate_number']],
+                            ['label' => 'จำนวนที่นั่ง', 'value' => (int)$v['seats'] . ' ที่นั่ง'],
+                        ],
+                        'noteTitle' => 'หมายเหตุ',
+                        'note'      => (string)($v['notes'] ?: ''),
+                    ];
+                ?>
+                    <button type="button"
+                            class="role-queue-item w-100 text-start border-0 bg-transparent d-flex align-items-center justify-content-between gap-2"
+                            data-swal-detail="<?= e((string)json_encode($vehDetail, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>">
+                        <div class="min-w-0">
+                            <div class="fw-semibold text-dark small"><?= e($v['vehicle_type'] . ' · ' . $v['brand_model']) ?></div>
+                            <div class="small text-muted">ทะเบียน <?= e($v['plate_number']) ?> · <?= (int)$v['seats'] ?> ที่นั่ง</div>
+                        </div>
+                        <i class="bi bi-info-circle text-primary small flex-shrink-0"></i>
+                    </button>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </div>
 
         <div class="spotlight-card">

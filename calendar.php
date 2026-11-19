@@ -12,6 +12,11 @@ $isInternal = is_internal($user);
 $canManageEvents = has_role([ROLE_ADMIN, ROLE_STAFF], $user);
 $csrfToken = csrf_token();
 
+$initialViewMode = trim((string)($_GET['view'] ?? ''));
+if (!in_array($initialViewMode, ['calendar', 'table', 'list'], true)) {
+    $initialViewMode = '';
+}
+
 $extraHead = '<meta name="csrf-token" content="' . e($csrfToken) . '">' . PHP_EOL
     . '<meta name="_csrf_token" content="' . e($csrfToken) . '">' . PHP_EOL
     . '<style>
@@ -37,6 +42,15 @@ $extraHead = '<meta name="csrf-token" content="' . e($csrfToken) . '">' . PHP_EO
             padding: 1px 4px;
             font-size: 0.8rem;
             cursor: pointer;
+        }
+        @media (max-width: 575.98px) {
+            .fc .fc-toolbar {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            .fc .fc-toolbar-title {
+                font-size: 1.05rem;
+            }
         }
     </style>';
 
@@ -89,22 +103,76 @@ require __DIR__ . '/includes/layout_header.php';
     </div>
 </div>
 
-<!-- Calendar Filter & Canvas Card -->
+<!-- Calendar Filter, View Mode Switcher & Views Container -->
 <div class="spotlight-card">
-    <div class="spotlight-header">
+    <div class="spotlight-header flex-wrap gap-2">
         <div class="d-flex flex-wrap align-items-center gap-1" id="calendarFilterGroup">
             <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 cal-filter-btn" data-type="all">ทั้งหมด</button>
             <button type="button" class="btn btn-sm btn-light border text-secondary rounded-pill px-3 cal-filter-btn" data-type="room">ห้องประชุม</button>
             <button type="button" class="btn btn-sm btn-light border text-secondary rounded-pill px-3 cal-filter-btn" data-type="vehicle">ยานพาหนะ</button>
             <button type="button" class="btn btn-sm btn-light border text-secondary rounded-pill px-3 cal-filter-btn" data-type="event">กิจกรรมหน่วยงาน</button>
         </div>
-        <div class="small text-muted d-none d-md-block">
-            <i class="bi bi-hand-index me-1"></i>คลิกวันที่หรือช่วงเวลาบนปฏิทินเพื่อจองทันที
+
+        <div class="cal-mode-switcher" role="group" aria-label="รูปแบบการแสดงผลปฏิทิน">
+            <button type="button" class="btn btn-sm cal-mode-btn active" data-view-mode="calendar" data-testid="cal-mode-calendar">
+                <i class="bi bi-calendar3"></i>
+                <span>ปฏิทิน</span>
+            </button>
+            <button type="button" class="btn btn-sm cal-mode-btn" data-view-mode="table" data-testid="cal-mode-table">
+                <i class="bi bi-table"></i>
+                <span>ตาราง</span>
+            </button>
+            <button type="button" class="btn btn-sm cal-mode-btn" data-view-mode="list" data-testid="cal-mode-list">
+                <i class="bi bi-list-ul"></i>
+                <span>ลิสต์เรียงตามวัน</span>
+            </button>
         </div>
     </div>
 
     <div class="p-2 p-sm-3 p-md-4">
+        <!-- Toolbar for Table & Daily Grouped List Modes -->
+        <div id="calendarAltToolbar" class="cal-alt-toolbar mb-3 d-none">
+            <div class="d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="เลื่อนช่วงเวลา">
+                        <button type="button" class="btn btn-outline-secondary" id="calAltPrev" title="ช่วงก่อนหน้า">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary fw-semibold px-3" id="calAltToday">วันนี้</button>
+                        <button type="button" class="btn btn-outline-secondary" id="calAltNext" title="ช่วงถัดไป">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="fw-bold text-dark fs-6 ms-1" id="calAltTitle">-</div>
+                    <span class="badge rounded-pill text-bg-light border text-secondary" id="calAltCount">0 รายการ</span>
+                </div>
+
+                <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2">
+                    <div class="d-flex flex-wrap gap-1" id="calAltScopeGroup">
+                        <button type="button" class="btn btn-sm btn-primary rounded-pill px-2 cal-scope-btn" data-alt-scope="month">รายเดือน</button>
+                        <button type="button" class="btn btn-sm btn-light border text-secondary rounded-pill px-2 cal-scope-btn" data-alt-scope="week">รายสัปดาห์</button>
+                        <button type="button" class="btn btn-sm btn-light border text-secondary rounded-pill px-2 cal-scope-btn" data-alt-scope="day">รายวัน</button>
+                        <button type="button" class="btn btn-sm btn-light border text-secondary rounded-pill px-2 cal-scope-btn" data-alt-scope="next30">30 วันข้างหน้า</button>
+                    </div>
+                    <div class="input-group input-group-sm" style="min-width: 210px;">
+                        <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                        <input type="text"
+                               class="form-control"
+                               id="calAltSearch"
+                               placeholder="ค้นหาเรื่อง สถานที่ รหัสจอง...">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mode 1: FullCalendar -->
         <div id="masterCalendar" data-testid="master-calendar"></div>
+
+        <!-- Mode 2: Table View (Sorted Chronologically) -->
+        <div id="calendarTableView" class="d-none" data-testid="calendar-table-view"></div>
+
+        <!-- Mode 3: Daily Grouped List View (Sorted by Day) -->
+        <div id="calendarListView" class="d-none" data-testid="calendar-list-view"></div>
     </div>
 </div>
 
@@ -257,28 +325,88 @@ document.addEventListener("DOMContentLoaded", function () {
     const bookVehicleBase = ' . json_encode($bookVehicleBase) . ';
     const csrfToken = ' . json_encode($csrfToken) . ';
     const canManage = ' . ($canManageEvents ? 'true' : 'false') . ';
+    const urlInitialMode = ' . json_encode($initialViewMode) . ';
+
+    const thaiMonthsFull = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+    const thaiMonthsShort = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+    const thaiWeekdays = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
 
     let activeFilter = "all";
+    let viewMode = urlInitialMode || localStorage.getItem("slp_cal_view_mode") || "calendar";
+    if (!["calendar", "table", "list"].includes(viewMode)) viewMode = "calendar";
+    let altScope = "month";
+    let anchorDate = new Date();
+    anchorDate.setHours(0, 0, 0, 0);
+    let cachedAltEvents = [];
+
     let currentSlotStart = "";
     let currentSlotEnd = "";
     let activeCalendarEvent = null;
 
-    function fmtThaiRange(startDate, endDate, allDay) {
-        if (!startDate) return "-";
-        const optDate = { year: "numeric", month: "short", day: "numeric", timeZone: "Asia/Bangkok" };
-        const optTime = { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Bangkok" };
-        const sDate = startDate.toLocaleDateString("th-TH", optDate);
-        if (allDay) {
-            return sDate + " (ตลอดวัน)";
+    function pad2(n) {
+        return n < 10 ? "0" + n : String(n);
+    }
+
+    function toYmd(dt) {
+        return dt.getFullYear() + "-" + pad2(dt.getMonth() + 1) + "-" + pad2(dt.getDate());
+    }
+
+    function parseYmdLocal(ymd) {
+        const parts = String(ymd || "").slice(0, 10).split("-");
+        if (parts.length !== 3) return new Date();
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0);
+    }
+
+    function formatThaiShortDate(ymd) {
+        const dt = parseYmdLocal(ymd);
+        return dt.getDate() + " " + (thaiMonthsShort[dt.getMonth()] || "") + " " + (dt.getFullYear() + 543);
+    }
+
+    function formatThaiFullDay(ymd) {
+        const dt = parseYmdLocal(ymd);
+        const w = thaiWeekdays[dt.getDay()] || "";
+        const m = thaiMonthsFull[dt.getMonth()] || "";
+        return "วัน" + w + "ที่ " + dt.getDate() + " " + m + " " + (dt.getFullYear() + 543);
+    }
+
+    function formatEventTimePill(ev) {
+        if (ev.allDay) return "ตลอดวัน";
+        const sStr = typeof ev.start === "string" ? ev.start : "";
+        const eStr = typeof ev.end === "string" ? ev.end : "";
+        const sTime = sStr.length >= 16 ? sStr.slice(11, 16) : "";
+        const eTime = eStr.length >= 16 ? eStr.slice(11, 16) : "";
+        if (sTime && eTime) return sTime + " – " + eTime + " น.";
+        if (sTime) return sTime + " น.";
+        return "-";
+    }
+
+    function fmtThaiRange(startVal, endVal, allDay) {
+        if (!startVal) return "-";
+        const isDateObj = startVal instanceof Date;
+        if (isDateObj) {
+            const optDate = { year: "numeric", month: "short", day: "numeric", timeZone: "Asia/Bangkok" };
+            const optTime = { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Bangkok" };
+            const sDate = startVal.toLocaleDateString("th-TH", optDate);
+            if (allDay) return sDate + " (ตลอดวัน)";
+            const sTime = startVal.toLocaleTimeString("th-TH", optTime);
+            if (!(endVal instanceof Date)) return sDate + " " + sTime + " น.";
+            const eDate = endVal.toLocaleDateString("th-TH", optDate);
+            const eTime = endVal.toLocaleTimeString("th-TH", optTime);
+            if (sDate === eDate) return sDate + " เวลา " + sTime + " - " + eTime + " น.";
+            return sDate + " " + sTime + " น. ถึง " + eDate + " " + eTime + " น.";
         }
-        const sTime = startDate.toLocaleTimeString("th-TH", optTime);
-        if (!endDate) return sDate + " " + sTime + " น.";
-        const eDate = endDate.toLocaleDateString("th-TH", optDate);
-        const eTime = endDate.toLocaleTimeString("th-TH", optTime);
-        if (sDate === eDate) {
-            return sDate + " เวลา " + sTime + " - " + eTime + " น.";
+        const sStr = String(startVal);
+        const eStr = endVal ? String(endVal) : "";
+        const sDateStr = formatThaiShortDate(sStr);
+        if (allDay) return sDateStr + " (ตลอดวัน)";
+        const sTimeStr = sStr.length >= 16 ? sStr.slice(11, 16) : "";
+        if (!eStr) return sDateStr + (sTimeStr ? " " + sTimeStr + " น." : "");
+        const eDateStr = formatThaiShortDate(eStr);
+        const eTimeStr = eStr.length >= 16 ? eStr.slice(11, 16) : "";
+        if (sStr.slice(0, 10) === eStr.slice(0, 10)) {
+            return sDateStr + " เวลา " + sTimeStr + " - " + eTimeStr + " น.";
         }
-        return sDate + " " + sTime + " น. ถึง " + eDate + " " + eTime + " น.";
+        return sDateStr + " " + sTimeStr + " น. ถึง " + eDateStr + " " + eTimeStr + " น.";
     }
 
     function toInputLocal(dt) {
@@ -299,6 +427,64 @@ document.addEventListener("DOMContentLoaded", function () {
     const eventFormModalEl = document.getElementById("eventFormModal");
     const eventFormModal = eventFormModalEl ? bootstrap.Modal.getOrCreateInstance(eventFormModalEl) : null;
 
+    function openEventDetailModal(ev) {
+        const p = ev.extendedProps || {};
+        activeCalendarEvent = ev;
+
+        const titleEl = document.getElementById("calEventModalTitle");
+        const bodyEl = document.getElementById("calEventModalBody");
+        const editBtn = document.getElementById("btnEditCalEvent");
+        const delBtn = document.getElementById("btnDeleteCalEvent");
+
+        if (titleEl) titleEl.textContent = ev.title || "รายละเอียดรายการ";
+
+        let html = "";
+        if (p.source_type === "booking") {
+            const typeLabel = p.booking_type === "room" ? "จองห้องประชุม" : "จองยานพาหนะ";
+            const statusBadgeMap = {
+                pending_head: "warning text-dark",
+                pending_vice: "info text-dark",
+                pending_director: "primary",
+                approved: "success",
+                rejected: "danger"
+            };
+            const stBadge = statusBadgeMap[p.status] || "secondary";
+            html += "<div class=\"d-flex flex-wrap gap-2 mb-3\">";
+            html += "<span class=\"badge text-bg-light border text-dark font-monospace\">" + escapeHtml(p.reference_code) + "</span>";
+            html += "<span class=\"badge " + (p.booking_type === "room" ? "text-bg-primary" : "text-bg-success") + "\">" + escapeHtml(typeLabel) + "</span>";
+            html += "<span class=\"badge text-bg-" + stBadge + "\">" + escapeHtml(p.status_label || p.status) + "</span>";
+            html += "</div>";
+            html += "<div class=\"mb-2\"><strong>สถานที่ / ยานพาหนะ:</strong> " + escapeHtml(p.resource_name) + "</div>";
+            html += "<div class=\"mb-2\"><strong>วันและเวลา:</strong> " + escapeHtml(fmtThaiRange(ev.start, ev.end, ev.allDay)) + "</div>";
+            if (!p.is_masked) {
+                html += "<div class=\"mb-2\"><strong>ผู้ขอใช้:</strong> " + escapeHtml(p.requester_name) + (p.requester_contact ? " (" + escapeHtml(p.requester_contact) + ")" : "") + "</div>";
+                if (p.destination) html += "<div class=\"mb-2\"><strong>ปลายทาง:</strong> " + escapeHtml(p.destination) + "</div>";
+                if (p.driver_name) html += "<div class=\"mb-2\"><strong>พนักงานขับรถ:</strong> " + escapeHtml(p.driver_name) + "</div>";
+                if (p.purpose) html += "<div class=\"mb-0\"><strong>วัตถุประสงค์:</strong> " + escapeHtml(p.purpose) + "</div>";
+            } else {
+                html += "<div class=\"alert alert-light border small text-muted mb-0 mt-2\"><i class=\"bi bi-shield-lock me-1\"></i>ข้อมูลผู้ขอและรายละเอียดถูกซ่อนเพื่อความเป็นส่วนตัว</div>";
+            }
+        } else {
+            html += "<div class=\"mb-2\"><span class=\"badge\" style=\"background:#7C3AED;\">กิจกรรมหน่วยงาน</span></div>";
+            html += "<div class=\"mb-2\"><strong>วันและเวลา:</strong> " + escapeHtml(fmtThaiRange(ev.start, ev.end, ev.allDay)) + "</div>";
+            html += "<div class=\"mb-2\"><strong>สถานที่:</strong> " + escapeHtml(p.location || "-") + "</div>";
+            html += "<div class=\"mb-0\"><strong>รายละเอียด:</strong> " + escapeHtml(p.description || "-") + "</div>";
+        }
+
+        if (bodyEl) bodyEl.innerHTML = html;
+
+        if (editBtn && delBtn) {
+            if (canManage && p.source_type === "calendar_event") {
+                editBtn.classList.remove("d-none");
+                delBtn.classList.remove("d-none");
+            } else {
+                editBtn.classList.add("d-none");
+                delBtn.classList.add("d-none");
+            }
+        }
+        if (detailModal) detailModal.show();
+    }
+
     const calendar = new FullCalendar.Calendar(calendarEl, {
         locale: "th",
         initialView: "dayGridMonth",
@@ -306,15 +492,28 @@ document.addEventListener("DOMContentLoaded", function () {
         navLinks: true,
         selectable: true,
         dayMaxEvents: 3,
+        buttonText: {
+            today: "วันนี้",
+            month: "เดือน",
+            week: "สัปดาห์",
+            day: "วัน",
+            listMonth: "กำหนดการ"
+        },
         eventTimeFormat: {
             hour: "2-digit",
             minute: "2-digit",
             hour12: false
         },
         headerToolbar: {
-            left: "dayGridMonth,timeGridWeek,timeGridDay",
+            left: "dayGridMonth,timeGridWeek,timeGridDay,listMonth",
             center: "title",
             right: "prev,next today"
+        },
+        datesSet: function (info) {
+            if (info.view && info.view.currentStart) {
+                anchorDate = new Date(info.view.currentStart.getTime());
+                anchorDate.setHours(0, 0, 0, 0);
+            }
         },
         events: function (fetchInfo, successCallback, failureCallback) {
             const url = eventsApi + "?start=" + encodeURIComponent(fetchInfo.startStr) + "&end=" + encodeURIComponent(fetchInfo.endStr) + "&type=" + encodeURIComponent(activeFilter);
@@ -347,66 +546,321 @@ document.addEventListener("DOMContentLoaded", function () {
             openSlotActionModal();
         },
         eventClick: function (info) {
-            const ev = info.event;
-            const p = ev.extendedProps || {};
-            activeCalendarEvent = ev;
-
-            const titleEl = document.getElementById("calEventModalTitle");
-            const bodyEl = document.getElementById("calEventModalBody");
-            const editBtn = document.getElementById("btnEditCalEvent");
-            const delBtn = document.getElementById("btnDeleteCalEvent");
-
-            if (titleEl) titleEl.textContent = ev.title || "รายละเอียดรายการ";
-
-            let html = "";
-            if (p.source_type === "booking") {
-                const typeLabel = p.booking_type === "room" ? "จองห้องประชุม" : "จองยานพาหนะ";
-                const statusBadgeMap = {
-                    pending_head: "warning text-dark",
-                    pending_vice: "info text-dark",
-                    pending_director: "primary",
-                    approved: "success",
-                    rejected: "danger"
-                };
-                const stBadge = statusBadgeMap[p.status] || "secondary";
-                html += "<div class=\"d-flex flex-wrap gap-2 mb-3\">";
-                html += "<span class=\"badge text-bg-light border text-dark font-monospace\">" + escapeHtml(p.reference_code) + "</span>";
-                html += "<span class=\"badge " + (p.booking_type === "room" ? "text-bg-primary" : "text-bg-success") + "\">" + escapeHtml(typeLabel) + "</span>";
-                html += "<span class=\"badge text-bg-" + stBadge + "\">" + escapeHtml(p.status_label || p.status) + "</span>";
-                html += "</div>";
-                html += "<div class=\"mb-2\"><strong>สถานที่ / ยานพาหนะ:</strong> " + escapeHtml(p.resource_name) + "</div>";
-                html += "<div class=\"mb-2\"><strong>วันและเวลา:</strong> " + escapeHtml(fmtThaiRange(ev.start, ev.end, ev.allDay)) + "</div>";
-                if (!p.is_masked) {
-                    html += "<div class=\"mb-2\"><strong>ผู้ขอใช้:</strong> " + escapeHtml(p.requester_name) + (p.requester_contact ? " (" + escapeHtml(p.requester_contact) + ")" : "") + "</div>";
-                    if (p.destination) html += "<div class=\"mb-2\"><strong>ปลายทาง:</strong> " + escapeHtml(p.destination) + "</div>";
-                    if (p.driver_name) html += "<div class=\"mb-2\"><strong>พนักงานขับรถ:</strong> " + escapeHtml(p.driver_name) + "</div>";
-                    if (p.purpose) html += "<div class=\"mb-0\"><strong>วัตถุประสงค์:</strong> " + escapeHtml(p.purpose) + "</div>";
-                } else {
-                    html += "<div class=\"alert alert-light border small text-muted mb-0 mt-2\"><i class=\"bi bi-shield-lock me-1\"></i>ข้อมูลผู้ขอและรายละเอียดถูกซ่อนเพื่อความเป็นส่วนตัว</div>";
-                }
-            } else {
-                html += "<div class=\"mb-2\"><span class=\"badge\" style=\"background:#7C3AED;\">กิจกรรมหน่วยงาน</span></div>";
-                html += "<div class=\"mb-2\"><strong>วันและเวลา:</strong> " + escapeHtml(fmtThaiRange(ev.start, ev.end, ev.allDay)) + "</div>";
-                html += "<div class=\"mb-2\"><strong>สถานที่:</strong> " + escapeHtml(p.location || "-") + "</div>";
-                html += "<div class=\"mb-0\"><strong>รายละเอียด:</strong> " + escapeHtml(p.description || "-") + "</div>";
-            }
-
-            if (bodyEl) bodyEl.innerHTML = html;
-
-            if (editBtn && delBtn) {
-                if (canManage && p.source_type === "calendar_event") {
-                    editBtn.classList.remove("d-none");
-                    delBtn.classList.remove("d-none");
-                } else {
-                    editBtn.classList.add("d-none");
-                    delBtn.classList.add("d-none");
-                }
-            }
-            if (detailModal) detailModal.show();
+            openEventDetailModal(info.event);
         }
     });
 
     calendar.render();
+
+    function computeAltRange() {
+        const y = anchorDate.getFullYear();
+        const m = anchorDate.getMonth();
+        let startDt, endDt, title;
+
+        if (altScope === "week") {
+            startDt = new Date(anchorDate.getTime());
+            startDt.setDate(startDt.getDate() - startDt.getDay());
+            endDt = new Date(startDt.getTime());
+            endDt.setDate(endDt.getDate() + 7);
+            const lastInc = new Date(endDt.getTime());
+            lastInc.setDate(lastInc.getDate() - 1);
+            title = formatThaiShortDate(toYmd(startDt)) + " – " + formatThaiShortDate(toYmd(lastInc));
+        } else if (altScope === "day") {
+            startDt = new Date(anchorDate.getTime());
+            endDt = new Date(startDt.getTime());
+            endDt.setDate(endDt.getDate() + 1);
+            title = formatThaiFullDay(toYmd(startDt));
+        } else if (altScope === "next30") {
+            startDt = new Date(anchorDate.getTime());
+            endDt = new Date(startDt.getTime());
+            endDt.setDate(endDt.getDate() + 30);
+            const lastInc = new Date(endDt.getTime());
+            lastInc.setDate(lastInc.getDate() - 1);
+            title = "30 วัน (" + formatThaiShortDate(toYmd(startDt)) + " – " + formatThaiShortDate(toYmd(lastInc)) + ")";
+        } else {
+            startDt = new Date(y, m, 1, 0, 0, 0);
+            endDt = new Date(y, m + 1, 1, 0, 0, 0);
+            title = (thaiMonthsFull[m] || "") + " " + (y + 543);
+        }
+
+        return {
+            startStr: toYmd(startDt) + " 00:00:00",
+            endStr: toYmd(endDt) + " 00:00:00",
+            title: title
+        };
+    }
+
+    function getFilteredSortedAltEvents() {
+        const q = (document.getElementById("calAltSearch")?.value || "").trim().toLowerCase();
+        const list = cachedAltEvents.filter(function (ev) {
+            if (!q) return true;
+            const p = ev.extendedProps || {};
+            const hay = [
+                ev.title,
+                p.reference_code,
+                p.resource_name,
+                p.location,
+                p.description,
+                p.destination,
+                p.requester_name,
+                p.status_label
+            ].join(" ").toLowerCase();
+            return hay.includes(q);
+        });
+
+        list.sort(function (a, b) {
+            const sa = String(a.start || "");
+            const sb = String(b.start || "");
+            return sa.localeCompare(sb);
+        });
+        return list;
+    }
+
+    function renderEventCategoryBadge(ev) {
+        const p = ev.extendedProps || {};
+        if (p.source_type === "booking") {
+            if (p.booking_type === "room") {
+                return "<span class=\"badge text-bg-primary\">ห้องประชุม</span>";
+            }
+            return "<span class=\"badge text-bg-success\">ยานพาหนะ</span>";
+        }
+        return "<span class=\"badge\" style=\"background:#7C3AED;\">กิจกรรมหน่วยงาน</span>";
+    }
+
+    function renderEventStatusBadge(ev) {
+        const p = ev.extendedProps || {};
+        if (p.source_type !== "booking") {
+            return "<span class=\"badge text-bg-light border text-secondary\">กิจกรรม</span>";
+        }
+        const statusBadgeMap = {
+            pending_head: "warning text-dark",
+            pending_vice: "info text-dark",
+            pending_director: "primary",
+            approved: "success",
+            rejected: "danger"
+        };
+        const stBadge = statusBadgeMap[p.status] || "secondary";
+        return "<span class=\"badge text-bg-" + stBadge + "\">" + escapeHtml(p.status_label || p.status) + "</span>";
+    }
+
+    function renderAltViews() {
+        const events = getFilteredSortedAltEvents();
+        const countEl = document.getElementById("calAltCount");
+        if (countEl) countEl.textContent = events.length + " รายการ";
+
+        const tableBox = document.getElementById("calendarTableView");
+        const listBox = document.getElementById("calendarListView");
+
+        if (viewMode === "table" && tableBox) {
+            if (events.length === 0) {
+                tableBox.innerHTML = "<div class=\"text-center text-muted py-5\"><i class=\"bi bi-table fs-1 d-block mb-2 opacity-50\"></i>ไม่พบรายการในช่วงเวลาที่เลือก</div>";
+            } else {
+                let html = "<div class=\"table-responsive border rounded-3\"><table class=\"table table-hover align-middle mb-0\">";
+                html += "<thead class=\"table-light\"><tr>";
+                html += "<th class=\"text-nowrap\">วันที่</th>";
+                html += "<th class=\"text-nowrap\">ช่วงเวลา</th>";
+                html += "<th class=\"text-nowrap\">ประเภท</th>";
+                html += "<th style=\"min-width:180px;\">เรื่อง / กิจกรรม</th>";
+                html += "<th style=\"min-width:150px;\">สถานที่ / ยานพาหนะ</th>";
+                html += "<th class=\"text-nowrap\">สถานะ</th>";
+                html += "<th class=\"text-end text-nowrap\">รายละเอียด</th>";
+                html += "</tr></thead><tbody>";
+
+                events.forEach(function (ev, idx) {
+                    const p = ev.extendedProps || {};
+                    const ymd = String(ev.start || "").slice(0, 10);
+                    const place = p.source_type === "booking" ? (p.resource_name || "-") : (p.location || "-");
+                    const dotColor = ev.color || "#2563EB";
+                    html += "<tr class=\"cal-table-row\" data-ev-idx=\"" + idx + "\">";
+                    html += "<td class=\"text-nowrap fw-semibold small\">" + escapeHtml(formatThaiShortDate(ymd)) + "</td>";
+                    html += "<td class=\"text-nowrap small\"><span class=\"cal-time-pill\"><i class=\"bi bi-clock\"></i> " + escapeHtml(formatEventTimePill(ev)) + "</span></td>";
+                    html += "<td class=\"text-nowrap\">" + renderEventCategoryBadge(ev) + "</td>";
+                    html += "<td><div class=\"fw-semibold text-dark small d-flex align-items-center gap-2\"><span class=\"fc-legend-dot\" style=\"background:" + escapeHtml(dotColor) + ";\"></span><span>" + escapeHtml(ev.title) + "</span></div>"
+                         + (p.reference_code ? "<div class=\"small text-muted font-monospace\">" + escapeHtml(p.reference_code) + "</div>" : "") + "</td>";
+                    html += "<td class=\"small text-secondary\">" + escapeHtml(place) + "</td>";
+                    html += "<td class=\"text-nowrap\">" + renderEventStatusBadge(ev) + "</td>";
+                    html += "<td class=\"text-end text-nowrap\"><button type=\"button\" class=\"btn btn-sm btn-soft-primary rounded-3 px-2 cal-open-detail\" data-ev-idx=\"" + idx + "\"><i class=\"bi bi-eye\"></i></button></td>";
+                    html += "</tr>";
+                });
+
+                html += "</tbody></table></div>";
+                tableBox.innerHTML = html;
+
+                tableBox.querySelectorAll("[data-ev-idx]").forEach(function (el) {
+                    el.addEventListener("click", function (e) {
+                        e.stopPropagation();
+                        const idx = Number(el.getAttribute("data-ev-idx"));
+                        if (events[idx]) openEventDetailModal(events[idx]);
+                    });
+                });
+            }
+        }
+
+        if (viewMode === "list" && listBox) {
+            if (events.length === 0) {
+                listBox.innerHTML = "<div class=\"text-center text-muted py-5\"><i class=\"bi bi-calendar-x fs-1 d-block mb-2 opacity-50\"></i>ไม่พบรายการในช่วงเวลาที่เลือก</div>";
+            } else {
+                const groups = new Map();
+                events.forEach(function (ev, idx) {
+                    const ymd = String(ev.start || "").slice(0, 10);
+                    if (!groups.has(ymd)) groups.set(ymd, []);
+                    groups.get(ymd).push({ ev: ev, idx: idx });
+                });
+
+                let html = "<div class=\"d-flex flex-column gap-3\">";
+                groups.forEach(function (items, ymd) {
+                    html += "<div class=\"cal-day-group\">";
+                    html += "<div class=\"cal-day-header\">";
+                    html += "<div class=\"d-flex align-items-center gap-2 flex-wrap\">";
+                    html += "<span class=\"fw-bold text-dark\"><i class=\"bi bi-calendar-date text-primary me-1\"></i>" + escapeHtml(formatThaiFullDay(ymd)) + "</span>";
+                    html += "<span class=\"badge rounded-pill text-bg-primary bg-opacity-75\">" + items.length + " รายการ</span>";
+                    html += "</div>";
+                    html += "<button type=\"button\" class=\"btn btn-sm btn-outline-primary rounded-pill px-3 cal-book-day-btn\" data-book-date=\"" + escapeHtml(ymd) + "\"><i class=\"bi bi-plus-circle me-1\"></i>จองวันนี้</button>";
+                    html += "</div>";
+
+                    items.forEach(function (entry) {
+                        const ev = entry.ev;
+                        const p = ev.extendedProps || {};
+                        const borderCol = ev.color || "#2563EB";
+                        const place = p.source_type === "booking" ? (p.resource_name || "-") : (p.location || "-");
+                        html += "<div class=\"cal-list-card\" style=\"border-left-color:" + escapeHtml(borderCol) + ";\" data-ev-idx=\"" + entry.idx + "\">";
+                        html += "<div class=\"min-w-0 flex-grow-1\">";
+                        html += "<div class=\"d-flex flex-wrap align-items-center gap-2 mb-1\">";
+                        html += "<span class=\"cal-time-pill\"><i class=\"bi bi-clock\"></i> " + escapeHtml(formatEventTimePill(ev)) + "</span>";
+                        html += renderEventCategoryBadge(ev);
+                        if (p.reference_code) {
+                            html += "<span class=\"badge text-bg-light border text-dark font-monospace\">" + escapeHtml(p.reference_code) + "</span>";
+                        }
+                        html += renderEventStatusBadge(ev);
+                        html += "</div>";
+                        html += "<div class=\"fw-bold text-dark\">" + escapeHtml(ev.title) + "</div>";
+                        html += "<div class=\"small text-muted d-flex flex-wrap gap-3 mt-1\">";
+                        html += "<span><i class=\"bi bi-geo-alt me-1\"></i>" + escapeHtml(place) + "</span>";
+                        if (p.source_type === "booking" && !p.is_masked && p.requester_name) {
+                            html += "<span><i class=\"bi bi-person me-1\"></i>" + escapeHtml(p.requester_name) + "</span>";
+                        }
+                        html += "</div></div>";
+                        html += "<div class=\"flex-shrink-0 text-md-end\"><span class=\"btn btn-sm btn-soft-primary rounded-3 px-3\">ดูรายละเอียด</span></div>";
+                        html += "</div>";
+                    });
+
+                    html += "</div>";
+                });
+                html += "</div>";
+
+                listBox.innerHTML = html;
+
+                listBox.querySelectorAll(".cal-list-card[data-ev-idx]").forEach(function (el) {
+                    el.addEventListener("click", function () {
+                        const idx = Number(el.getAttribute("data-ev-idx"));
+                        if (events[idx]) openEventDetailModal(events[idx]);
+                    });
+                });
+
+                listBox.querySelectorAll(".cal-book-day-btn[data-book-date]").forEach(function (btn) {
+                    btn.addEventListener("click", function () {
+                        const ymd = btn.getAttribute("data-book-date");
+                        if (!ymd) return;
+                        currentSlotStart = ymd + "T09:00";
+                        currentSlotEnd = ymd + "T12:00";
+                        openSlotActionModal();
+                    });
+                });
+            }
+        }
+    }
+
+    function fetchAndRenderAltViews() {
+        const range = computeAltRange();
+        const titleEl = document.getElementById("calAltTitle");
+        if (titleEl) titleEl.textContent = range.title;
+
+        const url = eventsApi + "?start=" + encodeURIComponent(range.startStr) + "&end=" + encodeURIComponent(range.endStr) + "&type=" + encodeURIComponent(activeFilter);
+        fetch(url, { headers: { "Accept": "application/json" } })
+            .then(r => r.json())
+            .then(function (data) {
+                cachedAltEvents = Array.isArray(data) ? data : (data.events || []);
+                renderAltViews();
+            })
+            .catch(function () {
+                cachedAltEvents = [];
+                renderAltViews();
+            });
+    }
+
+    function applyViewMode(mode) {
+        viewMode = mode;
+        try { localStorage.setItem("slp_cal_view_mode", mode); } catch (e) {}
+
+        document.querySelectorAll(".cal-mode-btn").forEach(function (btn) {
+            btn.classList.toggle("active", btn.getAttribute("data-view-mode") === mode);
+        });
+
+        const altToolbar = document.getElementById("calendarAltToolbar");
+        const calBox = document.getElementById("masterCalendar");
+        const tableBox = document.getElementById("calendarTableView");
+        const listBox = document.getElementById("calendarListView");
+
+        if (mode === "calendar") {
+            if (altToolbar) altToolbar.classList.add("d-none");
+            if (calBox) calBox.classList.remove("d-none");
+            if (tableBox) tableBox.classList.add("d-none");
+            if (listBox) listBox.classList.add("d-none");
+            calendar.gotoDate(anchorDate);
+            calendar.updateSize();
+            calendar.refetchEvents();
+        } else {
+            if (altToolbar) altToolbar.classList.remove("d-none");
+            if (calBox) calBox.classList.add("d-none");
+            if (tableBox) tableBox.classList.toggle("d-none", mode !== "table");
+            if (listBox) listBox.classList.toggle("d-none", mode !== "list");
+            fetchAndRenderAltViews();
+        }
+    }
+
+    document.querySelectorAll(".cal-mode-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            const m = btn.getAttribute("data-view-mode") || "calendar";
+            applyViewMode(m);
+        });
+    });
+
+    document.querySelectorAll(".cal-scope-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            altScope = btn.getAttribute("data-alt-scope") || "month";
+            document.querySelectorAll(".cal-scope-btn").forEach(function (b) {
+                b.classList.remove("btn-primary");
+                b.classList.add("btn-light", "border", "text-secondary");
+            });
+            btn.classList.remove("btn-light", "border", "text-secondary");
+            btn.classList.add("btn-primary");
+            fetchAndRenderAltViews();
+        });
+    });
+
+    document.getElementById("calAltPrev")?.addEventListener("click", function () {
+        if (altScope === "week") anchorDate.setDate(anchorDate.getDate() - 7);
+        else if (altScope === "day") anchorDate.setDate(anchorDate.getDate() - 1);
+        else if (altScope === "next30") anchorDate.setDate(anchorDate.getDate() - 30);
+        else anchorDate = new Date(anchorDate.getFullYear(), anchorDate.getMonth() - 1, 1);
+        fetchAndRenderAltViews();
+    });
+
+    document.getElementById("calAltNext")?.addEventListener("click", function () {
+        if (altScope === "week") anchorDate.setDate(anchorDate.getDate() + 7);
+        else if (altScope === "day") anchorDate.setDate(anchorDate.getDate() + 1);
+        else if (altScope === "next30") anchorDate.setDate(anchorDate.getDate() + 30);
+        else anchorDate = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 1);
+        fetchAndRenderAltViews();
+    });
+
+    document.getElementById("calAltToday")?.addEventListener("click", function () {
+        anchorDate = new Date();
+        anchorDate.setHours(0, 0, 0, 0);
+        fetchAndRenderAltViews();
+    });
+
+    document.getElementById("calAltSearch")?.addEventListener("input", renderAltViews);
 
     function openSlotActionModal() {
         const sumEl = document.getElementById("slotActionSummary");
@@ -419,6 +873,14 @@ document.addEventListener("DOMContentLoaded", function () {
         if (slotModal) slotModal.show();
     }
 
+    function refreshActiveView() {
+        if (viewMode === "calendar") {
+            calendar.refetchEvents();
+        } else {
+            fetchAndRenderAltViews();
+        }
+    }
+
     document.querySelectorAll(".cal-filter-btn").forEach(function (btn) {
         btn.addEventListener("click", function () {
             activeFilter = btn.getAttribute("data-type") || "all";
@@ -428,7 +890,7 @@ document.addEventListener("DOMContentLoaded", function () {
             });
             btn.classList.remove("btn-light", "border", "text-secondary");
             btn.classList.add("btn-primary");
-            calendar.refetchEvents();
+            refreshActiveView();
         });
     });
 
@@ -506,7 +968,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 .then(res => {
                     if (res.ok) {
                         if (detailModal) detailModal.hide();
-                        calendar.refetchEvents();
+                        refreshActiveView();
                         window.SLPApp.showToast("ลบกิจกรรมเรียบร้อยแล้ว", "success");
                     } else {
                         window.SLPApp.showToast(res.error || "ไม่สามารถลบกิจกรรมได้", "danger");
@@ -543,7 +1005,7 @@ document.addEventListener("DOMContentLoaded", function () {
             .then(res => {
                 if (res.ok) {
                     if (eventFormModal) eventFormModal.hide();
-                    calendar.refetchEvents();
+                    refreshActiveView();
                     window.SLPApp.showToast("บันทึกกิจกรรมเรียบร้อยแล้ว", "success");
                 } else if (errBox) {
                     errBox.textContent = res.error || "ไม่สามารถบันทึกกิจกรรมได้";
@@ -557,6 +1019,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
             });
         });
+    }
+
+    if (viewMode !== "calendar") {
+        applyViewMode(viewMode);
     }
 });
 </script>';

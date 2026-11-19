@@ -14,7 +14,7 @@ $activeNav = 'index';
 $pendingCount = pending_approval_count($user);
 $role = (string)($user['role'] ?? ROLE_USER);
 $roleLabel = ROLE_LABELS[$role] ?? $role;
-$appOrgName = defined('APP_ORG_NAME') ? APP_ORG_NAME : 'สำนักงานบริหารทั่วไป';
+$appOrgName = defined('APP_ORG_NAME') ? APP_ORG_NAME : 'โรงเรียนสระหลวงพิทยาคม';
 $todayThai = thai_date(date('Y-m-d'));
 $userOrgOrDept = (string)($user['department'] ?: ($user['organization'] ?: ''));
 
@@ -343,7 +343,7 @@ $kpiCards = match ($viewMode) {
     'executive', 'approver_head' => [
         ['label' => 'รออนุมัติ',   'value' => $pendingCount,               'icon' => 'bi-hourglass-split',   'color' => 'kpi-icon-amber',   'accent' => 'kpi-accent-amber',   'href' => app_url('/approvals.php')],
         ['label' => 'อนุมัติแล้ว', 'value' => $stats['approved_bookings'], 'icon' => 'bi-check-circle-fill', 'color' => 'kpi-icon-emerald', 'accent' => 'kpi-accent-emerald', 'href' => app_url('/dashboard.php')],
-        ['label' => 'ห้องประชุม',  'value' => $stats['rooms'],             'icon' => 'bi-door-open-fill',    'color' => 'kpi-icon-blue',    'accent' => 'kpi-accent-blue',    'href' => app_url('/calendar.php')],
+        ['label' => 'ห้องประชุม',  'value' => $stats['rooms'],             'icon' => 'bi-door-open-fill',    'color' => 'kpi-icon-blue',    'accent' => 'kpi-accent-blue',    'href' => app_url($role === ROLE_ADMIN ? '/resources_manage.php' : '/calendar.php')],
         ['label' => 'งานแจ้งซ่อม', 'value' => $stats['open_maint'],        'icon' => 'bi-wrench-adjustable', 'color' => 'kpi-icon-indigo',  'accent' => 'kpi-accent-indigo',  'href' => app_url(in_array($role, [ROLE_STAFF, ROLE_ADMIN], true) ? '/maintenance_manage.php' : '/maintenance.php')],
     ],
     'operational_staff' => [
@@ -441,6 +441,12 @@ require __DIR__ . '/includes/layout_header.php';
             <?php endif; ?>
 
             <?php if ($role === ROLE_ADMIN): ?>
+                <a href="<?= e(app_url('/resources_manage.php')) ?>"
+                   class="btn btn-hero-glass fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3"
+                   data-testid="btn-quick-manage-resources">
+                    <i class="bi bi-building-fill-gear"></i>
+                    <span>จัดการอาคาร/ห้อง/รถ</span>
+                </a>
                 <a href="<?= e(app_url('/users_manage.php?add=1')) ?>"
                    class="btn btn-hero-glass fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3"
                    data-testid="btn-quick-add-user">

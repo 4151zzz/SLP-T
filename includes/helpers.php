@@ -341,6 +341,15 @@ if (!function_exists('nav_items')) {
                 'roles'  => [ROLE_ADMIN],
                 'badge'  => null,
             ],
+            [
+                'key'    => 'resources_manage',
+                'href'   => app_url('/resources_manage.php'),
+                'label'  => 'จัดการอาคาร/ห้อง/รถ',
+                'icon'   => 'bi-building-fill-gear',
+                'testid' => 'nav-resources-manage',
+                'roles'  => [ROLE_ADMIN],
+                'badge'  => null,
+            ],
         ];
 
         $visible = [];
@@ -356,7 +365,7 @@ if (!function_exists('nav_items')) {
             ROLE_VICE_DIRECTOR => ['dashboard', 'approvals', 'calendar', 'my_bookings', 'book_room', 'book_vehicle', 'assets_borrow', 'maintenance'],
             ROLE_HEAD          => ['approvals', 'dashboard', 'calendar', 'book_room', 'book_vehicle', 'my_bookings', 'assets_borrow', 'maintenance'],
             ROLE_STAFF         => ['approvals', 'maintenance_manage', 'assets_borrow', 'qr_codes', 'calendar', 'dashboard', 'book_room', 'book_vehicle', 'my_bookings', 'maintenance'],
-            ROLE_ADMIN         => ['dashboard', 'approvals', 'users_manage', 'maintenance_manage', 'assets_borrow', 'qr_codes', 'calendar', 'book_room', 'book_vehicle', 'my_bookings', 'maintenance'],
+            ROLE_ADMIN         => ['dashboard', 'approvals', 'users_manage', 'resources_manage', 'maintenance_manage', 'assets_borrow', 'qr_codes', 'calendar', 'book_room', 'book_vehicle', 'my_bookings', 'maintenance'],
             ROLE_USER          => ['calendar', 'book_room', 'book_vehicle', 'my_bookings', 'assets_borrow', 'maintenance'],
             ROLE_EXTERNAL_USER => ['book_room', 'my_bookings', 'calendar', 'maintenance'],
         ];
@@ -377,5 +386,81 @@ if (!function_exists('is_active_nav')) {
         $current = basename((string)($_SERVER['PHP_SELF'] ?? ''));
         $target = basename((string)(parse_url($href, PHP_URL_PATH) ?: $href));
         return $current !== '' && $current === $target;
+    }
+}
+
+if (!function_exists('ensure_resource_image_schema')) {
+    /**
+     * Auto-migrate buildings table and image_url columns on buildings/rooms once per request.
+     */
+    function ensure_resource_image_schema(PDO $pdo): void
+    {
+        static $done = false;
+        if ($done) {
+            return;
+        }
+        $done = true;
+
+        try {
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS buildings (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    building_code VARCHAR(30) NOT NULL,
+                    name VARCHAR(150) NOT NULL,
+                    floors_count INT UNSIGNED NOT NULL DEFAULT 1,
+                    description TEXT NULL,
+                    image_url VARCHAR(500) NULL,
+                    is_active TINYINT(1) NOT NULL DEFAULT 1,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_buildings_code (building_code),
+                    UNIQUE KEY uq_buildings_name (name),
+                    KEY idx_buildings_active (is_active)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+            if (!$pdo->query("SHOW COLUMNS FROM buildings LIKE 'image_url'")->fetch()) {
+                $pdo->exec('ALTER TABLE buildings ADD COLUMN image_url VARCHAR(500) NULL AFTER description');
+            }
+            if (!$pdo->query("SHOW COLUMNS FROM rooms LIKE 'image_url'")->fetch()) {
+                $pdo->exec('ALTER TABLE rooms ADD COLUMN image_url VARCHAR(500) NULL AFTER description');
+            }
+        } catch (Throwable $e) {
+            // Non-fatal if DB account lacks DDL privileges
+        }
+    }
+}
+
+if (!function_exists('normalize_image_url')) {
+    /**
+     * Validate an external HTTP/HTTPS image URL and auto-convert Google Drive share links.
+     */
+    function normalize_image_url(?string $raw, ?string &$error = null): ?string
+    {
+        $error = null;
+        $val = trim((string)($raw ?? ''));
+        if ($val === '') {
+            return null;
+        }
+
+        if (preg_match('/[\x00-\x1F\x7F]/', $val) === 1
+            || preg_match('#^https?://#i', $val) !== 1
+            || filter_var($val, FILTER_VALIDATE_URL) === false
+        ) {
+            $error = 'กรุณาระบุลิงก์รูปภาพที่ถูกต้อง (ขึ้นต้นด้วย http:// หรือ https:// และยาวไม่เกิน 500 ตัวอักษร)';
+            return null;
+        }
+
+        if (preg_match('#^https?://drive\.google\.com/file/d/([A-Za-z0-9_-]{10,})#i', $val, $m) === 1) {
+            $val = 'https://drive.google.com/thumbnail?id=' . $m[1] . '&sz=w1000';
+        } elseif (preg_match('#^https?://drive\.google\.com/(?:open|uc)\b.*[?&]id=([A-Za-z0-9_-]{10,})#i', $val, $m) === 1) {
+            $val = 'https://drive.google.com/thumbnail?id=' . $m[1] . '&sz=w1000';
+        }
+
+        if (strlen($val) > 500) {
+            $error = 'กรุณาระบุลิงก์รูปภาพที่ถูกต้อง (ขึ้นต้นด้วย http:// หรือ https:// และยาวไม่เกิน 500 ตัวอักษร)';
+            return null;
+        }
+
+        return $val;
     }
 }

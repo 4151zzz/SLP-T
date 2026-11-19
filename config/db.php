@@ -12,7 +12,7 @@ if (!function_exists('get_db_config')) {
         $pass = getenv('DB_PASS');
 
         // Auto-detect local development environment
-        $httpHost = (string)($_SERVER['HTTP_HOST'] ?? '');
+        $httpHost = (string) ($_SERVER['HTTP_HOST'] ?? '');
         $isLocalDev = in_array($httpHost, ['127.0.0.1:3000', 'localhost:3000', '127.0.0.1', 'localhost'], true)
             || (PHP_SAPI === 'cli' && empty(getenv('DB_NAME')));
 
@@ -30,7 +30,7 @@ if (!function_exists('get_db_config')) {
             'host' => getenv('DB_HOST') ?: 'localhost',
             'port' => getenv('DB_PORT') ?: '3306',
             'name' => getenv('DB_NAME') ?: 'saluangac_General',
-            'user' => getenv('DB_USER') ?: 'wun426655',
+            'user' => getenv('DB_USER') ?: 'saluangac_General',
             'pass' => ($pass === false) ? 'wun426655' : $pass,
         ];
     }

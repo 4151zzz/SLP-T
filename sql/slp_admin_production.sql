@@ -19,6 +19,7 @@ DROP TABLE IF EXISTS bookings;
 DROP TABLE IF EXISTS drivers;
 DROP TABLE IF EXISTS vehicles;
 DROP TABLE IF EXISTS rooms;
+DROP TABLE IF EXISTS buildings;
 DROP TABLE IF EXISTS users;
 
 -- 1. users
@@ -46,6 +47,22 @@ CREATE TABLE users (
     KEY idx_users_type (user_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 1b. buildings
+CREATE TABLE buildings (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    building_code VARCHAR(30) NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    floors_count INT UNSIGNED NOT NULL DEFAULT 1,
+    description TEXT NULL,
+    image_url VARCHAR(500) NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_buildings_code (building_code),
+    UNIQUE KEY uq_buildings_name (name),
+    KEY idx_buildings_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 2. rooms
 CREATE TABLE rooms (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -57,6 +74,7 @@ CREATE TABLE rooms (
     allow_external TINYINT(1) NOT NULL DEFAULT 0,
     available_equipment JSON NULL,
     description TEXT NULL,
+    image_url VARCHAR(500) NULL,
     is_active TINYINT(1) NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

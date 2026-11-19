@@ -9,19 +9,59 @@ require_once __DIR__ . '/includes/booking_conflict.php';
 $user = require_login();
 $pdo = get_pdo();
 
+ensure_resource_image_schema($pdo);
+
 $pageTitle = 'จองห้องประชุม';
 $activeNav = 'book_room';
 $isExternal = is_external($user);
 
 $roomsSql = $isExternal
-    ? 'SELECT id, room_code, name, building, floor, capacity, allow_external, available_equipment, description
-       FROM rooms WHERE is_active = 1 AND allow_external = 1 ORDER BY room_code ASC'
-    : 'SELECT id, room_code, name, building, floor, capacity, allow_external, available_equipment, description
-       FROM rooms WHERE is_active = 1 ORDER BY room_code ASC';
+    ? 'SELECT r.id, r.room_code, r.name, r.building, r.floor, r.capacity, r.allow_external,
+              r.available_equipment, r.description, r.image_url,
+              b.image_url AS building_image_url, b.description AS building_description, b.floors_count AS building_floors
+       FROM rooms r
+       LEFT JOIN buildings b ON b.name = r.building
+       WHERE r.is_active = 1 AND r.allow_external = 1
+       ORDER BY r.room_code ASC'
+    : 'SELECT r.id, r.room_code, r.name, r.building, r.floor, r.capacity, r.allow_external,
+              r.available_equipment, r.description, r.image_url,
+              b.image_url AS building_image_url, b.description AS building_description, b.floors_count AS building_floors
+       FROM rooms r
+       LEFT JOIN buildings b ON b.name = r.building
+       WHERE r.is_active = 1
+       ORDER BY r.room_code ASC';
 $rooms = $pdo->query($roomsSql)->fetchAll();
 $roomsById = [];
+$roomsMeta = [];
 foreach ($rooms as $r) {
-    $roomsById[(int)$r['id']] = $r;
+    $rid = (int)$r['id'];
+    $roomsById[$rid] = $r;
+
+    $ownImg = trim((string)($r['image_url'] ?? ''));
+    $bldImg = trim((string)($r['building_image_url'] ?? ''));
+    $effImg = $ownImg !== '' ? $ownImg : $bldImg;
+    $imgSrc = $ownImg !== '' ? 'room' : ($bldImg !== '' ? 'building' : '');
+
+    $eqKeys = json_decode((string)($r['available_equipment'] ?? '[]'), true);
+    if (!is_array($eqKeys)) {
+        $eqKeys = [];
+    }
+    $eqLabels = array_values(array_map(static fn ($k): string => ROOM_EQUIPMENT_LABELS[$k] ?? (string)$k, $eqKeys));
+
+    $roomsMeta[$rid] = [
+        'id'                   => $rid,
+        'room_code'            => (string)$r['room_code'],
+        'name'                 => (string)$r['name'],
+        'building'             => (string)($r['building'] ?? ''),
+        'floor'                => (string)($r['floor'] ?? ''),
+        'capacity'             => (int)$r['capacity'],
+        'allow_external'       => ((int)$r['allow_external'] === 1),
+        'equipment_labels'     => $eqLabels,
+        'description'          => (string)($r['description'] ?? ''),
+        'building_description' => (string)($r['building_description'] ?? ''),
+        'image_url'            => $effImg,
+        'image_source'         => $imgSrc,
+    ];
 }
 
 $prefillStart = parse_local_datetime($_GET['start'] ?? null);
@@ -220,17 +260,75 @@ require __DIR__ . '/includes/layout_header.php';
             <form method="post" action="<?= e(app_url('/book_room.php')) ?>" enctype="multipart/form-data" novalidate>
                 <?= csrf_field() ?>
 
+                <?php if (empty($rooms)): ?>
+                    <div class="alert alert-warning border-0 rounded-3 d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-3">
+                        <div class="small">
+                            <i class="bi bi-info-circle-fill me-1"></i>
+                            ยังไม่มีข้อมูลห้องประชุมที่เปิดให้บริการในระบบ
+                        </div>
+                        <?php if (has_role(ROLE_ADMIN, $user)): ?>
+                            <a href="<?= e(app_url('/resources_manage.php?tab=rooms')) ?>" class="btn btn-sm btn-primary rounded-3 flex-shrink-0">
+                                <i class="bi bi-plus-circle me-1"></i>เพิ่มห้องประชุม
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
                 <div class="mb-3">
                     <label for="room_id" class="form-label fw-semibold small text-secondary">เลือกห้องประชุม <span class="text-danger">*</span></label>
                     <select class="form-select touch-target" id="room_id" name="room_id" required data-testid="book-room-select">
-                        <?php foreach ($rooms as $r): ?>
-                            <option value="<?= (int)$r['id'] ?>"
-                                    data-capacity="<?= (int)$r['capacity'] ?>"
-                                    <?= ((string)$r['id'] === $form['room_id']) ? 'selected' : '' ?>>
-                                <?= e($r['room_code'] . ' — ' . $r['name'] . ' (รองรับ ' . (int)$r['capacity'] . ' คน)') ?>
-                            </option>
-                        <?php endforeach; ?>
+                        <?php if (empty($rooms)): ?>
+                            <option value="">-- ยังไม่มีห้องประชุมในระบบ --</option>
+                        <?php else: ?>
+                            <?php foreach ($rooms as $r):
+                                $locText = trim((string)($r['building'] ?? '') . ($r['floor'] ? ' ' . $r['floor'] : ''));
+                            ?>
+                                <option value="<?= (int)$r['id'] ?>"
+                                        data-capacity="<?= (int)$r['capacity'] ?>"
+                                        <?= ((string)$r['id'] === $form['room_id']) ? 'selected' : '' ?>>
+                                    <?= e($r['room_code'] . ' — ' . $r['name'] . ($locText !== '' ? ' [' . $locText . ']' : '') . ' (รองรับ ' . (int)$r['capacity'] . ' คน)') ?>
+                                </option>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </select>
+
+                    <?php if (!empty($rooms)): ?>
+                        <div class="room-picker-grid mt-2" aria-label="เลือกห้องประชุมจากการ์ด">
+                            <?php foreach ($rooms as $r):
+                                $rmInfo = $roomsMeta[(int)$r['id']] ?? [];
+                                $thumbImg = (string)($rmInfo['image_url'] ?? '');
+                                $isSelectedCard = ((string)$r['id'] === (string)$form['room_id']);
+                                $locSub = trim(($r['building'] ?: 'ไม่ระบุอาคาร') . ($r['floor'] ? ' · ' . $r['floor'] : ''));
+                            ?>
+                                <button type="button"
+                                        class="room-picker-card<?= $isSelectedCard ? ' is-selected' : '' ?>"
+                                        data-room-card-id="<?= (int)$r['id'] ?>"
+                                        data-testid="room-picker-card-<?= e($r['room_code']) ?>">
+                                    <span class="room-picker-thumb">
+                                        <?php if ($thumbImg !== ''): ?>
+                                            <img src="<?= e($thumbImg) ?>"
+                                                 alt="<?= e($r['name']) ?>"
+                                                 loading="lazy"
+                                                 onerror="this.classList.add('d-none'); this.nextElementSibling?.classList.remove('d-none');">
+                                            <i class="bi bi-door-open-fill d-none"></i>
+                                        <?php else: ?>
+                                            <i class="bi bi-door-open-fill"></i>
+                                        <?php endif; ?>
+                                    </span>
+                                    <span class="min-w-0 flex-grow-1">
+                                        <span class="d-block fw-semibold text-dark small text-truncate"><?= e($r['name']) ?></span>
+                                        <span class="d-block text-muted text-truncate" style="font-size: 0.74rem;"><?= e($locSub) ?></span>
+                                        <span class="d-inline-flex align-items-center gap-1 mt-1">
+                                            <span class="badge text-bg-light border text-secondary" style="font-size: 0.68rem;">รองรับ <?= (int)$r['capacity'] ?> คน</span>
+                                            <?php if ((int)$r['allow_external'] === 1): ?>
+                                                <span class="badge text-bg-info text-dark" style="font-size: 0.68rem;">ภายนอก</span>
+                                            <?php endif; ?>
+                                        </span>
+                                    </span>
+                                </button>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="mb-3">
@@ -335,6 +433,75 @@ require __DIR__ . '/includes/layout_header.php';
     </div>
 
     <div class="col-12 col-lg-4">
+        <?php
+            $initRoomId = (int)$form['room_id'];
+            $initRoom = $roomsMeta[$initRoomId] ?? (!empty($roomsMeta) ? reset($roomsMeta) : null);
+            $initImg = $initRoom ? (string)$initRoom['image_url'] : '';
+        ?>
+        <div class="spotlight-card mb-4 overflow-hidden" id="selectedRoomPreviewCard" data-testid="room-preview-card">
+            <div class="room-preview-hero">
+                <img src="<?= e($initImg) ?>"
+                     alt="<?= e($initRoom['name'] ?? 'ตัวอย่างห้องประชุม') ?>"
+                     id="previewRoomHeroImg"
+                     class="<?= $initImg === '' ? 'd-none' : '' ?>"
+                     onerror="this.classList.add('d-none'); document.getElementById('previewRoomPlaceholder')?.classList.remove('d-none');">
+                <div id="previewRoomPlaceholder" class="room-preview-placeholder<?= $initImg !== '' ? ' d-none' : '' ?>">
+                    <i class="bi bi-buildings fs-1 d-block mb-1"></i>
+                    <div class="small fw-semibold" id="previewPlaceholderText">
+                        <?= $initRoom ? e($initRoom['building'] ?: 'ห้องประชุม') : 'ยังไม่ได้เลือกห้องประชุม' ?>
+                    </div>
+                </div>
+
+                <button type="button"
+                        id="previewRoomZoomBtn"
+                        class="btn room-preview-zoom-btn<?= $initImg === '' ? ' d-none' : '' ?>">
+                    <i class="bi bi-arrows-fullscreen me-1"></i>ดูภาพขยาย
+                </button>
+
+                <div class="room-preview-overlay-badges">
+                    <span class="badge text-bg-light text-dark font-monospace shadow-sm" id="previewRoomCodeBadge">
+                        <?= $initRoom ? e($initRoom['room_code']) : '-' ?>
+                    </span>
+                    <span class="badge text-bg-dark bg-opacity-75 shadow-sm" id="previewRoomBuildingBadge">
+                        <?= $initRoom ? e($initRoom['building'] ?: 'ไม่ระบุอาคาร') : '-' ?>
+                    </span>
+                </div>
+            </div>
+
+            <div class="p-3">
+                <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                    <h2 class="h6 fw-bold text-dark mb-0" id="previewRoomTitle">
+                        <?= $initRoom ? e($initRoom['name']) : 'กรุณาเลือกห้องประชุม' ?>
+                    </h2>
+                    <span class="badge text-bg-light border text-secondary flex-shrink-0<?= ($initRoom && $initRoom['image_source'] === 'building') ? '' : ' d-none' ?>" id="previewRoomImgSourceBadge" style="font-size: 0.7rem;">ภาพอาคาร</span>
+                </div>
+
+                <div class="small text-muted d-flex flex-wrap gap-3 mb-2">
+                    <span id="previewRoomLocation">
+                        <i class="bi bi-geo-alt text-primary me-1"></i><?= $initRoom ? e(trim(($initRoom['building'] ?: 'ไม่ระบุอาคาร') . ($initRoom['floor'] ? ' · ' . $initRoom['floor'] : ''))) : '-' ?>
+                    </span>
+                    <span id="previewRoomCapacity">
+                        <i class="bi bi-people text-success me-1"></i><?= $initRoom ? ('รองรับ ' . (int)$initRoom['capacity'] . ' คน') : '-' ?>
+                    </span>
+                </div>
+
+                <div class="d-flex flex-wrap gap-1 mb-2" id="previewRoomEquipment">
+                    <?php if ($initRoom): ?>
+                        <?php if ($initRoom['allow_external']): ?>
+                            <span class="badge text-bg-info text-dark">บุคคลภายนอกจองได้</span>
+                        <?php endif; ?>
+                        <?php foreach ($initRoom['equipment_labels'] as $eqL): ?>
+                            <span class="badge text-bg-light border text-secondary"><?= e($eqL) ?></span>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+
+                <div class="small text-secondary mb-0" id="previewRoomDesc">
+                    <?= $initRoom ? e($initRoom['description'] ?: ($initRoom['building_description'] ?: 'พร้อมให้บริการตามช่วงเวลาที่ว่าง')) : '' ?>
+                </div>
+            </div>
+        </div>
+
         <div class="spotlight-card">
             <div class="spotlight-header">
                 <h2 class="h6 fw-bold mb-0"><i class="bi bi-clock-history text-primary me-1"></i>คิวจองห้องประชุมเร็ว ๆ นี้</h2>
@@ -371,4 +538,113 @@ require __DIR__ . '/includes/layout_header.php';
         </div>
     </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const ROOMS_META = <?= (string)json_encode($roomsMeta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+    const roomSelect = document.getElementById('room_id');
+    const attendeesInput = document.getElementById('attendee_count');
+    const heroImg = document.getElementById('previewRoomHeroImg');
+    const placeholder = document.getElementById('previewRoomPlaceholder');
+    const placeholderText = document.getElementById('previewPlaceholderText');
+    const zoomBtn = document.getElementById('previewRoomZoomBtn');
+    const codeBadge = document.getElementById('previewRoomCodeBadge');
+    const bldBadge = document.getElementById('previewRoomBuildingBadge');
+    const imgSrcBadge = document.getElementById('previewRoomImgSourceBadge');
+    const titleEl = document.getElementById('previewRoomTitle');
+    const locEl = document.getElementById('previewRoomLocation');
+    const capEl = document.getElementById('previewRoomCapacity');
+    const eqWrap = document.getElementById('previewRoomEquipment');
+    const descEl = document.getElementById('previewRoomDesc');
+
+    let currentPreviewUrl = <?= (string)json_encode($initImg, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>;
+    let currentPreviewTitle = <?= (string)json_encode($initRoom['name'] ?? '', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+
+    if (zoomBtn) {
+        zoomBtn.addEventListener('click', function () {
+            if (currentPreviewUrl && window.SLPApp && typeof window.SLPApp.showPhoto === 'function') {
+                window.SLPApp.showPhoto(currentPreviewUrl, currentPreviewTitle || 'ภาพห้อง/อาคาร');
+            }
+        });
+    }
+
+    function syncRoomPreview(roomId) {
+        const meta = ROOMS_META[String(roomId)] || null;
+        document.querySelectorAll('.room-picker-card[data-room-card-id]').forEach(function (card) {
+            card.classList.toggle('is-selected', card.getAttribute('data-room-card-id') === String(roomId));
+        });
+
+        if (!meta) return;
+        currentPreviewUrl = meta.image_url || '';
+        currentPreviewTitle = meta.name || '';
+
+        if (heroImg && placeholder) {
+            if (currentPreviewUrl) {
+                heroImg.src = currentPreviewUrl;
+                heroImg.alt = currentPreviewTitle;
+                heroImg.classList.remove('d-none');
+                placeholder.classList.add('d-none');
+                if (zoomBtn) zoomBtn.classList.remove('d-none');
+            } else {
+                heroImg.classList.add('d-none');
+                heroImg.removeAttribute('src');
+                placeholder.classList.remove('d-none');
+                if (placeholderText) placeholderText.textContent = meta.building || meta.name || 'ห้องประชุม';
+                if (zoomBtn) zoomBtn.classList.add('d-none');
+            }
+        }
+
+        if (codeBadge) codeBadge.textContent = meta.room_code || '-';
+        if (bldBadge) bldBadge.textContent = meta.building || 'ไม่ระบุอาคาร';
+        if (imgSrcBadge) imgSrcBadge.classList.toggle('d-none', meta.image_source !== 'building');
+        if (titleEl) titleEl.textContent = meta.name || '-';
+        if (locEl) {
+            const locText = ((meta.building || 'ไม่ระบุอาคาร') + (meta.floor ? ' · ' + meta.floor : '')).trim();
+            locEl.innerHTML = '<i class="bi bi-geo-alt text-primary me-1"></i>';
+            locEl.appendChild(document.createTextNode(locText));
+        }
+        if (capEl) {
+            capEl.innerHTML = '<i class="bi bi-people text-success me-1"></i>';
+            capEl.appendChild(document.createTextNode('รองรับ ' + (meta.capacity || 0) + ' คน'));
+        }
+        if (attendeesInput && meta.capacity) {
+            attendeesInput.max = String(meta.capacity);
+        }
+        if (eqWrap) {
+            eqWrap.innerHTML = '';
+            if (meta.allow_external) {
+                const extBadge = document.createElement('span');
+                extBadge.className = 'badge text-bg-info text-dark';
+                extBadge.textContent = 'บุคคลภายนอกจองได้';
+                eqWrap.appendChild(extBadge);
+            }
+            (meta.equipment_labels || []).forEach(function (lbl) {
+                const b = document.createElement('span');
+                b.className = 'badge text-bg-light border text-secondary';
+                b.textContent = lbl;
+                eqWrap.appendChild(b);
+            });
+        }
+        if (descEl) {
+            descEl.textContent = meta.description || meta.building_description || 'พร้อมให้บริการตามช่วงเวลาที่ว่าง';
+        }
+    }
+
+    if (roomSelect) {
+        roomSelect.addEventListener('change', function () {
+            syncRoomPreview(roomSelect.value);
+        });
+    }
+
+    document.querySelectorAll('.room-picker-card[data-room-card-id]').forEach(function (card) {
+        card.addEventListener('click', function () {
+            const rid = card.getAttribute('data-room-card-id');
+            if (!rid) return;
+            if (roomSelect) {
+                roomSelect.value = rid;
+            }
+            syncRoomPreview(rid);
+        });
+    });
+});
+</script>
 <?php require __DIR__ . '/includes/layout_footer.php'; ?>
