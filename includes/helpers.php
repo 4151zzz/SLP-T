@@ -464,3 +464,65 @@ if (!function_exists('normalize_image_url')) {
         return $val;
     }
 }
+
+if (!function_exists('ensure_system_settings_schema')) {
+    /**
+     * Ensure system_settings table exists and has default qr_enabled setting.
+     */
+    function ensure_system_settings_schema(PDO $pdo): void
+    {
+        static $checked = false;
+        if ($checked) {
+            return;
+        }
+        $checked = true;
+        try {
+            $pdo->exec(
+                'CREATE TABLE IF NOT EXISTS system_settings (
+                    setting_key VARCHAR(64) NOT NULL PRIMARY KEY,
+                    setting_value VARCHAR(255) NOT NULL,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+            );
+            $pdo->exec(
+                "INSERT IGNORE INTO system_settings (setting_key, setting_value) VALUES ('qr_enabled', '1')"
+            );
+        } catch (Throwable $e) {
+            // Non-fatal if DB account lacks DDL privileges
+        }
+    }
+}
+
+if (!function_exists('is_qr_enabled')) {
+    /**
+     * Check whether QR code generation and scan shortcuts are enabled.
+     */
+    function is_qr_enabled(PDO $pdo): bool
+    {
+        ensure_system_settings_schema($pdo);
+        try {
+            $stmt = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'qr_enabled' LIMIT 1");
+            $stmt->execute();
+            $val = $stmt->fetchColumn();
+            return $val === false ? true : ($val === '1');
+        } catch (Throwable $e) {
+            return true;
+        }
+    }
+}
+
+if (!function_exists('set_qr_enabled')) {
+    /**
+     * Enable or disable QR code functionality in system_settings.
+     */
+    function set_qr_enabled(PDO $pdo, bool $enabled): void
+    {
+        ensure_system_settings_schema($pdo);
+        $stmt = $pdo->prepare(
+            "INSERT INTO system_settings (setting_key, setting_value)
+             VALUES ('qr_enabled', :val)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)"
+        );
+        $stmt->execute([':val' => $enabled ? '1' : '0']);
+    }
+}

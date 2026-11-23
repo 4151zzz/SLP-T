@@ -348,10 +348,46 @@ $returnedHistory = $stmtHistory->fetchAll();
 $totalActiveAssets = count(array_filter($assets, static fn (array $a): bool => (int)$a['is_active'] === 1));
 $totalAvailStock = array_sum(array_map(static fn (array $a): int => (int)$a['is_active'] === 1 ? (int)$a['available_stock'] : 0, $assets));
 $defaultExpectedReturn = date('Y-m-d\T17:00', strtotime('+1 day'));
+$qrEnabled = is_qr_enabled($pdo);
+$preselectAssetId = (int)($_GET['asset_id'] ?? 0);
+$fromQr = isset($_GET['qr']);
+$scannedAsset = null;
+if ($preselectAssetId > 0) {
+    foreach ($assets as $a) {
+        if ((int)$a['id'] === $preselectAssetId) {
+            $scannedAsset = $a;
+            break;
+        }
+    }
+}
+$selectedBorrowAsset = $borrowableAssets[0] ?? null;
+if ($preselectAssetId > 0) {
+    foreach ($borrowableAssets as $ba) {
+        if ((int)$ba['id'] === $preselectAssetId) {
+            $selectedBorrowAsset = $ba;
+            break;
+        }
+    }
+}
 
 require __DIR__ . '/includes/layout_header.php';
 ?>
 <!-- Header Card -->
+<?php if ($fromQr && !$qrEnabled): ?>
+    <div class="alert alert-warning border-0 rounded-4 shadow-sm mb-3 d-flex align-items-center gap-2" data-testid="qr-disabled-notice">
+        <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+        <span>ระบบสแกน QR Code ถูกปิดใช้งานชั่วคราว โดยยังสามารถทำรายการยืม-คืนผ่านแบบฟอร์มด้านล่างได้ตามปกติ</span>
+    </div>
+<?php elseif ($scannedAsset && $qrEnabled): ?>
+    <div class="alert alert-primary border-0 rounded-4 shadow-sm mb-3 d-flex align-items-center justify-content-between gap-2" data-testid="qr-scanned-banner">
+        <div>
+            <i class="bi bi-qr-code-scan me-1"></i>
+            <strong>สแกน QR Code:</strong> <?= e($scannedAsset['asset_code'] . ' — ' . $scannedAsset['name']) ?>
+            (คงเหลือ <?= (int)$scannedAsset['available_stock'] ?>/<?= (int)$scannedAsset['total_stock'] ?>)
+        </div>
+        <a href="<?= e(app_url('/assets_borrow.php')) ?>" class="btn btn-sm btn-outline-primary rounded-3">ดูทั้งหมด</a>
+    </div>
+<?php endif; ?>
 <div class="welcome-card p-3 p-md-4 mb-4">
     <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
         <div class="min-w-0">
@@ -365,13 +401,23 @@ require __DIR__ . '/includes/layout_header.php';
         </div>
 
         <?php if ($isManager): ?>
-            <button type="button"
-                    class="btn btn-primary-gradient fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3 flex-shrink-0"
-                    id="btnAddAsset"
-                    data-testid="btn-add-asset">
-                <i class="bi bi-plus-circle-fill"></i>
-                <span>เพิ่มอุปกรณ์ / กุญแจ</span>
-            </button>
+            <div class="d-flex flex-wrap gap-2 flex-shrink-0">
+                <?php if ($qrEnabled): ?>
+                    <a href="<?= e(app_url('/qr_codes.php')) ?>"
+                       class="btn btn-outline-primary fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3"
+                       data-testid="btn-goto-qr-codes">
+                        <i class="bi bi-qr-code"></i>
+                        <span>พิมพ์ QR Code</span>
+                    </a>
+                <?php endif; ?>
+                <button type="button"
+                        class="btn btn-primary-gradient fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3"
+                        id="btnAddAsset"
+                        data-testid="btn-add-asset">
+                    <i class="bi bi-plus-circle-fill"></i>
+                    <span>เพิ่มอุปกรณ์ / กุญแจ</span>
+                </button>
+            </div>
         <?php endif; ?>
     </div>
 </div>
@@ -441,7 +487,9 @@ require __DIR__ . '/includes/layout_header.php';
                         <label for="borrow_asset_id" class="form-label fw-semibold small text-secondary">เลือกอุปกรณ์ / กุญแจ <span class="text-danger">*</span></label>
                         <select class="form-select touch-target" id="borrow_asset_id" name="asset_id" required>
                             <?php foreach ($borrowableAssets as $ba): ?>
-                                <option value="<?= (int)$ba['id'] ?>" data-max-stock="<?= (int)$ba['available_stock'] ?>">
+                                <option value="<?= (int)$ba['id'] ?>"
+                                        data-max-stock="<?= (int)$ba['available_stock'] ?>"
+                                        <?= ($selectedBorrowAsset && (int)$ba['id'] === (int)$selectedBorrowAsset['id']) ? 'selected' : '' ?>>
                                     <?= e($ba['asset_code'] . ' — ' . $ba['name'] . ' (คงเหลือ ' . (int)$ba['available_stock'] . '/' . (int)$ba['total_stock'] . ')') ?>
                                 </option>
                             <?php endforeach; ?>
@@ -456,7 +504,7 @@ require __DIR__ . '/includes/layout_header.php';
                                    id="borrow_qty"
                                    name="quantity"
                                    min="1"
-                                   max="<?= (int)$borrowableAssets[0]['available_stock'] ?>"
+                                   max="<?= (int)($selectedBorrowAsset['available_stock'] ?? 1) ?>"
                                    value="1"
                                    required>
                         </div>
@@ -568,8 +616,9 @@ require __DIR__ . '/includes/layout_header.php';
             <?php else: ?>
                 <?php foreach ($activeBorrowings as $ab):
                     $isOverdue = strtotime((string)$ab['expected_return_at']) < time();
+                    $isHighlighted = ($preselectAssetId > 0 && (int)$ab['asset_id'] === $preselectAssetId);
                 ?>
-                    <div class="role-queue-item card border-0 rounded-0 shadow-none bg-transparent" data-testid="active-borrow-<?= e($ab['borrow_code']) ?>">
+                    <div class="role-queue-item card <?= $isHighlighted ? 'border-primary border-2 bg-primary bg-opacity-10' : 'border-0 bg-transparent' ?> rounded-0 shadow-none" data-testid="active-borrow-<?= e($ab['borrow_code']) ?>">
                         <div class="d-flex flex-column flex-md-row align-items-md-start justify-content-between gap-2">
                             <div class="min-w-0 flex-grow-1">
                                 <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
