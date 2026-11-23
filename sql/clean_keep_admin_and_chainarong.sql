@@ -1,5 +1,5 @@
 -- ล้างข้อมูลทั้งหมดในฐานข้อมูล ยกเว้นบัญชี 'admin' และ 'chainarong19412@gmail.com'
--- วิธีใช้: เปิด phpMyAdmin -> เลือกฐานข้อมูล saluangac_General -> แท็บ SQL -> วางคำสั่งนี้แล้วกด Go
+-- วิธีใช้: เปิด phpMyAdmin -> เลือกฐานข้อมูล saluangac_General -> แท็บ SQL หรือ Import -> กด Go
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -18,17 +18,29 @@ CREATE TABLE IF NOT EXISTS buildings (
     KEY idx_buildings_active (is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-TRUNCATE TABLE notification_logs;
-TRUNCATE TABLE asset_borrowings;
-TRUNCATE TABLE maintenance_requests;
-TRUNCATE TABLE assets;
-TRUNCATE TABLE calendar_events;
-TRUNCATE TABLE approval_logs;
-TRUNCATE TABLE bookings;
-TRUNCATE TABLE drivers;
-TRUNCATE TABLE vehicles;
-TRUNCATE TABLE rooms;
-TRUNCATE TABLE buildings;
+DELETE FROM notification_logs;
+DELETE FROM asset_borrowings;
+DELETE FROM maintenance_requests;
+DELETE FROM assets;
+DELETE FROM calendar_events;
+DELETE FROM approval_logs;
+DELETE FROM bookings;
+DELETE FROM drivers;
+DELETE FROM vehicles;
+DELETE FROM rooms;
+DELETE FROM buildings;
+
+ALTER TABLE notification_logs AUTO_INCREMENT = 1;
+ALTER TABLE asset_borrowings AUTO_INCREMENT = 1;
+ALTER TABLE maintenance_requests AUTO_INCREMENT = 1;
+ALTER TABLE assets AUTO_INCREMENT = 1;
+ALTER TABLE calendar_events AUTO_INCREMENT = 1;
+ALTER TABLE approval_logs AUTO_INCREMENT = 1;
+ALTER TABLE bookings AUTO_INCREMENT = 1;
+ALTER TABLE drivers AUTO_INCREMENT = 1;
+ALTER TABLE vehicles AUTO_INCREMENT = 1;
+ALTER TABLE rooms AUTO_INCREMENT = 1;
+ALTER TABLE buildings AUTO_INCREMENT = 1;
 
 DELETE FROM users
 WHERE LOWER(COALESCE(email, '')) <> 'chainarong19412@gmail.com'
