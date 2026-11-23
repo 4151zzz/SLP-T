@@ -218,37 +218,40 @@ if (!function_exists('attempt_login')) {
             'SELECT id, user_type, role, username, staff_id, password_hash, full_name,
                     position_title, department, organization, phone, email, line_user_id, is_active
              FROM users
-             WHERE username = :ident1 OR staff_id = :ident2 OR email = :ident3
-             LIMIT 3'
+             WHERE username = :ident1 OR staff_id = :ident2 OR email = :ident3 OR phone = :ident4
+             LIMIT 5'
         );
         $stmt->execute([
             ':ident1' => $identifier,
             ':ident2' => $identifier,
             ':ident3' => $identifier,
+            ':ident4' => $identifier,
         ]);
         $rows = $stmt->fetchAll();
 
         $matched = null;
         foreach ($rows as $row) {
             if ($row['user_type'] === USER_TYPE_INTERNAL) {
-                $isInternalMatch = ($row['username'] === $identifier)
-                    || ($row['staff_id'] !== null && $row['staff_id'] === $identifier)
-                    || ($row['email'] !== null && strcasecmp((string)$row['email'], $identifier) === 0);
-                if ($isInternalMatch) {
+                $isInternalMatch = (strcasecmp((string)$row['username'], $identifier) === 0)
+                    || ($row['staff_id'] !== null && strcasecmp((string)$row['staff_id'], $identifier) === 0)
+                    || ($row['email'] !== null && strcasecmp((string)$row['email'], $identifier) === 0)
+                    || ($row['phone'] !== null && $row['phone'] === $identifier);
+                if ($isInternalMatch && password_verify($password, (string)$row['password_hash'])) {
                     $matched = $row;
                     break;
                 }
             } elseif ($row['user_type'] === USER_TYPE_EXTERNAL) {
-                $isExternalMatch = (strcasecmp((string)$row['email'], $identifier) === 0)
-                    || ($row['username'] === $identifier);
-                if ($isExternalMatch) {
+                $isExternalMatch = ($row['email'] !== null && strcasecmp((string)$row['email'], $identifier) === 0)
+                    || (strcasecmp((string)$row['username'], $identifier) === 0)
+                    || ($row['phone'] !== null && $row['phone'] === $identifier);
+                if ($isExternalMatch && password_verify($password, (string)$row['password_hash'])) {
                     $matched = $row;
                     break;
                 }
             }
         }
 
-        if ($matched === null || !password_verify($password, (string)$matched['password_hash'])) {
+        if ($matched === null) {
             return [
                 'ok'    => false,
                 'user'  => null,

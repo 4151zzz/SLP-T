@@ -291,7 +291,13 @@ require __DIR__ . '/includes/layout_header.php';
                                         <div><strong>ความเห็น:</strong> <?= e($lg['comment']) ?></div>
                                     <?php endif; ?>
                                     <div class="mt-2 pt-2 border-top text-center">
-                                        <div>ลงนาม: <?= e($lg['digital_signature'] ?: $lg['signer_name']) ?></div>
+                                        <?php if (!empty($lg['digital_signature']) && str_starts_with((string)$lg['digital_signature'], 'uploads/signatures/')): ?>
+                                            <img src="<?= e(app_url('/download.php?type=signature&id=' . (int)$lg['id'])) ?>"
+                                                 alt="ลายมือชื่อ <?= e($lg['signer_name']) ?>"
+                                                 class="memo-sig-img">
+                                        <?php else: ?>
+                                            <div>ลงนาม: <?= e($lg['digital_signature'] ?: $lg['signer_name']) ?></div>
+                                        <?php endif; ?>
                                         <div>(<?= e($lg['signer_name']) ?>)</div>
                                         <?php if (!empty($lg['signer_position'])): ?>
                                             <div><?= e($lg['signer_position']) ?></div>

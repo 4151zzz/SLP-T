@@ -260,6 +260,12 @@ require __DIR__ . '/includes/layout_header.php';
                                        placeholder="••••••••"
                                        required
                                        data-testid="register-password">
+                                <button type="button"
+                                        class="btn btn-eye text-muted px-3"
+                                        id="toggleRegPassword"
+                                        aria-label="แสดงหรือซ่อนรหัสผ่าน">
+                                    <i class="bi bi-eye"></i>
+                                </button>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -274,6 +280,12 @@ require __DIR__ . '/includes/layout_header.php';
                                        placeholder="••••••••"
                                        required
                                        data-testid="register-password-confirm">
+                                <button type="button"
+                                        class="btn btn-eye text-muted px-3"
+                                        id="toggleRegPasswordConfirm"
+                                        aria-label="แสดงหรือซ่อนยืนยันรหัสผ่าน">
+                                    <i class="bi bi-eye"></i>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -302,4 +314,20 @@ require __DIR__ . '/includes/layout_header.php';
         </div>
     </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    [['toggleRegPassword', 'password'], ['toggleRegPasswordConfirm', 'password_confirm']].forEach(function (pair) {
+        const btn = document.getElementById(pair[0]);
+        const inp = document.getElementById(pair[1]);
+        if (btn && inp) {
+            btn.addEventListener('click', function () {
+                const isPw = inp.type === 'password';
+                inp.type = isPw ? 'text' : 'password';
+                const ic = btn.querySelector('i');
+                if (ic) ic.className = isPw ? 'bi bi-eye-slash' : 'bi bi-eye';
+            });
+        }
+    });
+});
+</script>
 <?php require __DIR__ . '/includes/layout_footer.php'; ?>

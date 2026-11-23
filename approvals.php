@@ -105,27 +105,138 @@ $extraHead = '<meta name="csrf-token" content="' . e(csrf_token()) . '">';
 $extraScripts = <<<'HTML'
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // Initialize signature canvases (mouse, touch & stylus)
+    document.querySelectorAll('.sig-pad-canvas').forEach(function (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        let drawing = false;
+        let lastX = 0;
+        let lastY = 0;
+
+        function getPos(ev) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = rect.width > 0 ? (canvas.width / rect.width) : 1;
+            const scaleY = rect.height > 0 ? (canvas.height / rect.height) : 1;
+            return {
+                x: (ev.clientX - rect.left) * scaleX,
+                y: (ev.clientY - rect.top) * scaleY
+            };
+        }
+
+        canvas.addEventListener('pointerdown', function (ev) {
+            if (ev.button !== 0 && ev.pointerType === 'mouse') return;
+            drawing = true;
+            const pos = getPos(ev);
+            lastX = pos.x;
+            lastY = pos.y;
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            canvas.setPointerCapture(ev.pointerId);
+        });
+
+        canvas.addEventListener('pointermove', function (ev) {
+            if (!drawing) return;
+            const pos = getPos(ev);
+            ctx.lineWidth = 2.5;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+            lastX = pos.x;
+            lastY = pos.y;
+            canvas.dataset.hasDrawn = '1';
+        });
+
+        function stopDraw(ev) {
+            if (!drawing) return;
+            drawing = false;
+            try { canvas.releasePointerCapture(ev.pointerId); } catch (e) {}
+        }
+
+        canvas.addEventListener('pointerup', stopDraw);
+        canvas.addEventListener('pointercancel', stopDraw);
+    });
+
     document.addEventListener('click', function (ev) {
-        const btn = ev.target instanceof Element ? ev.target.closest('button[name="action"][value="reject"], button[name="action"][value="return"]') : null;
+        const clearBtn = ev.target instanceof Element ? ev.target.closest('.btn-clear-sig') : null;
+        if (clearBtn) {
+            const bid = clearBtn.getAttribute('data-sig-target');
+            const canvas = bid ? document.getElementById('sigCanvas_' + bid) : null;
+            const hiddenInp = bid ? document.getElementById('sigInput_' + bid) : null;
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+                delete canvas.dataset.hasDrawn;
+            }
+            if (hiddenInp) hiddenInp.value = '';
+            return;
+        }
+
+        const btn = ev.target instanceof Element ? ev.target.closest('button[name="action"]') : null;
         if (!btn) return;
         const form = btn.closest('form');
         if (!form) return;
-        const commentEl = form.querySelector('textarea[name="comment"]');
-        if (commentEl && commentEl.value.trim() === '') {
+
+        const actionVal = btn.getAttribute('value') || '';
+        const bidInput = form.querySelector('input[name="booking_id"]');
+        const bid = bidInput ? bidInput.value : '';
+        const canvas = bid ? document.getElementById('sigCanvas_' + bid) : null;
+        const sigInput = bid ? document.getElementById('sigInput_' + bid) : null;
+
+        if (canvas && sigInput && canvas.dataset.hasDrawn === '1') {
+            sigInput.value = canvas.toDataURL('image/png');
+        }
+
+        if (actionVal === 'reject' || actionVal === 'return') {
+            const commentEl = form.querySelector('textarea[name="comment"]');
+            if (commentEl && commentEl.value.trim() === '') {
+                ev.preventDefault();
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'กรุณาระบุความเห็น',
+                        text: 'จำเป็นต้องกรอกเหตุผลหรือความเห็นประกอบการส่งกลับหรือไม่อนุมัติ',
+                        confirmButtonText: 'รับทราบ',
+                        confirmButtonColor: '#2563eb',
+                        customClass: { popup: 'slp-swal-popup' }
+                    }).then(function () {
+                        commentEl.focus();
+                    });
+                } else {
+                    commentEl.focus();
+                }
+                return;
+            }
+        }
+
+        if (actionVal === 'approve' && canvas && canvas.dataset.hasDrawn !== '1' && form.dataset.sigConfirmed !== '1') {
             ev.preventDefault();
             if (typeof Swal !== 'undefined') {
                 Swal.fire({
-                    icon: 'warning',
-                    title: 'กรุณาระบุความเห็น',
-                    text: 'จำเป็นต้องกรอกเหตุผลหรือความเห็นประกอบการส่งกลับหรือไม่อนุมัติ',
-                    confirmButtonText: 'รับทราบ',
-                    confirmButtonColor: '#2563eb',
+                    icon: 'info',
+                    title: 'ยังไม่ได้วาดลายมือชื่อ',
+                    text: 'คุณยังไม่ได้เซ็นชื่อในช่องลายเซ็น ต้องการกลับไปเซ็นหรืออนุมัติด้วยชื่อดิจิทัล?',
+                    showCancelButton: true,
+                    confirmButtonText: 'อนุมัติด้วยชื่อดิจิทัล',
+                    cancelButtonText: 'กลับไปเซ็นลายมือชื่อ',
+                    confirmButtonColor: '#16a34a',
+                    cancelButtonColor: '#2563eb',
+                    reverseButtons: true,
                     customClass: { popup: 'slp-swal-popup' }
-                }).then(function () {
-                    commentEl.focus();
+                }).then(function (res) {
+                    if (res && res.isConfirmed) {
+                        form.dataset.sigConfirmed = '1';
+                        if (typeof form.requestSubmit === 'function') {
+                            form.requestSubmit(btn);
+                        } else {
+                            btn.click();
+                        }
+                    }
                 });
-            } else {
-                commentEl.focus();
             }
         }
     });
@@ -374,6 +485,33 @@ require __DIR__ . '/includes/layout_header.php';
                                               name="comment"
                                               rows="2"
                                               placeholder="ระบุความเห็น (จำเป็นเมื่อส่งกลับหรือไม่อนุมัติ)"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="mt-3">
+                                <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                    <label class="form-label small fw-semibold mb-0" for="sigCanvas_<?= $bid ?>">
+                                        <i class="bi bi-pen me-1 text-primary"></i>ลายมือชื่อผู้พิจารณา (วาดด้วยเมาส์หรือนิ้วมือ)
+                                    </label>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-0 btn-clear-sig"
+                                            data-sig-target="<?= $bid ?>"
+                                            style="font-size: 0.75rem;">
+                                        <i class="bi bi-eraser me-1"></i>ล้างลายเซ็น
+                                    </button>
+                                </div>
+                                <div class="sig-pad-wrapper" data-sig-wrap="<?= $bid ?>">
+                                    <canvas class="sig-pad-canvas"
+                                            id="sigCanvas_<?= $bid ?>"
+                                            data-booking-id="<?= $bid ?>"
+                                            data-testid="sig-canvas-<?= $bid ?>"
+                                            width="520"
+                                            height="150"></canvas>
+                                    <div class="sig-pad-guide">ลงชื่อ........................................................</div>
+                                </div>
+                                <input type="hidden" name="signature_image" id="sigInput_<?= $bid ?>" value="">
+                                <div class="form-text" style="font-size: 0.74rem;">
+                                    วาดลายเซ็นในกรอบด้านบน (หากไม่ได้วาด ระบบจะใช้ชื่อผู้ลงนามดิจิทัลแทน)
                                 </div>
                             </div>
 

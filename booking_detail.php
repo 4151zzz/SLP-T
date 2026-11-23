@@ -391,8 +391,16 @@ require __DIR__ . '/includes/layout_header.php';
                                     <i class="bi bi-clock me-1"></i><?= e(thai_date($lg['acted_at'], true)) ?>
                                 </div>
                                 <?php if (!empty($lg['comment'])): ?>
-                                    <div class="p-2 rounded bg-white border small text-dark">
+                                    <div class="p-2 rounded bg-white border small text-dark mb-2">
                                         <?= e($lg['comment']) ?>
+                                    </div>
+                                <?php endif; ?>
+                                <?php if (!empty($lg['digital_signature']) && str_starts_with((string)$lg['digital_signature'], 'uploads/signatures/')): ?>
+                                    <div class="sig-preview-box">
+                                        <div class="small text-muted mb-1" style="font-size: 0.72rem;">ลายมือชื่อผู้พิจารณา</div>
+                                        <img src="<?= e(app_url('/download.php?type=signature&id=' . (int)$lg['id'])) ?>"
+                                             alt="ลายมือชื่อ <?= e($lg['signer_name']) ?>"
+                                             class="memo-sig-img">
                                     </div>
                                 <?php endif; ?>
                             </div>

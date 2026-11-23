@@ -73,6 +73,50 @@ $defaultPosition = trim((string)($user['position_title'] ?? '')) ?: ($roleLabels
 $signerName = trim((string)($input['signer_name'] ?? '')) ?: (string)$user['full_name'];
 $signerPosition = trim((string)($input['signer_position'] ?? '')) ?: $defaultPosition;
 $digitalSignature = trim((string)($input['digital_signature'] ?? '')) ?: $signerName;
+$rawSignatureImage = trim((string)($input['signature_image'] ?? ''));
+
+$saveSignatureDataUrl = static function (string $dataUrl, int $bkId): ?string {
+    if (!str_starts_with($dataUrl, 'data:image/png;base64,')) {
+        return null;
+    }
+    $b64 = substr($dataUrl, strlen('data:image/png;base64,'));
+    $bin = base64_decode($b64, true);
+    if ($bin === false || strlen($bin) < 24 || strlen($bin) > 512000) {
+        return null;
+    }
+    if (!str_starts_with($bin, "\x89PNG\r\n\x1a\n")) {
+        return null;
+    }
+    $sigDir = UPLOAD_ROOT . DIRECTORY_SEPARATOR . 'signatures';
+    if (!is_dir($sigDir)) {
+        @mkdir($sigDir, 0755, true);
+    }
+    if (!is_dir($sigDir)) {
+        return null;
+    }
+    try {
+        $fname = sprintf('sig_%d_%s.png', $bkId, bin2hex(random_bytes(8)));
+    } catch (Throwable $e) {
+        $fname = sprintf('sig_%d_%s.png', $bkId, uniqid('', true));
+    }
+    $fullPath = $sigDir . DIRECTORY_SEPARATOR . $fname;
+    if (@file_put_contents($fullPath, $bin) === false) {
+        return null;
+    }
+    return 'uploads/signatures/' . $fname;
+};
+
+if ($bookingId > 0) {
+    $sigCandidate = str_starts_with($rawSignatureImage, 'data:image/png;base64,')
+        ? $rawSignatureImage
+        : (str_starts_with($digitalSignature, 'data:image/png;base64,') ? $digitalSignature : '');
+    if ($sigCandidate !== '') {
+        $savedSigPath = $saveSignatureDataUrl($sigCandidate, $bookingId);
+        if ($savedSigPath !== null) {
+            $digitalSignature = $savedSigPath;
+        }
+    }
+}
 
 if ($bookingId <= 0) {
     $respond(false, 422, 'ไม่พบรหัสคำขอจองที่ถูกต้อง');

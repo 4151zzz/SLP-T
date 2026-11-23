@@ -109,7 +109,7 @@ require __DIR__ . '/includes/layout_header.php';
                         <span>ยินดีต้อนรับเข้าสู่ระบบ</span>
                     </span>
                     <h1 class="h3 fw-bold text-dark mb-1">เข้าสู่ระบบ</h1>
-                    <p class="small text-muted mb-0">ลงชื่อเข้าใช้งานด้วยชื่อผู้ใช้ รหัสบุคลากร หรืออีเมลของคุณ</p>
+                    <p class="small text-muted mb-0">ลงชื่อเข้าใช้งานด้วยชื่อผู้ใช้ รหัสบุคลากร อีเมล หรือเบอร์โทรศัพท์</p>
                 </div>
 
                 <?php if ($error !== null): ?>
@@ -124,7 +124,7 @@ require __DIR__ . '/includes/layout_header.php';
                     <input type="hidden" name="redirect" value="<?= e($redirectTarget) ?>">
 
                     <div class="mb-3">
-                        <label for="identifier" class="form-label fw-semibold small text-secondary">ชื่อผู้ใช้ / รหัสบุคลากร / อีเมล</label>
+                        <label for="identifier" class="form-label fw-semibold small text-secondary">อีเมล / ชื่อผู้ใช้ / รหัสบุคลากร / เบอร์โทร</label>
                         <div class="input-group auth-field">
                             <span class="input-group-text"><i class="bi bi-person-vcard"></i></span>
                             <input type="text"
@@ -132,7 +132,7 @@ require __DIR__ . '/includes/layout_header.php';
                                    id="identifier"
                                    name="identifier"
                                    value="<?= e($identifier) ?>"
-                                   placeholder="ชื่อผู้ใช้ รหัสบุคลากร หรืออีเมล"
+                                   placeholder="อีเมล ชื่อผู้ใช้ หรือเบอร์โทรที่ลงทะเบียน"
                                    autocomplete="username"
                                    required
                                    autofocus

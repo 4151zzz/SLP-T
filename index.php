@@ -382,10 +382,10 @@ require __DIR__ . '/includes/layout_header.php';
 ?>
 <!-- Zone 1: Gradient Hero Header -->
 <div class="home-hero p-3 p-md-4 mb-4">
-    <div class="home-hero-inner d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+    <div class="home-hero-inner d-flex flex-column gap-3">
         <div class="d-flex align-items-center gap-3 min-w-0">
             <div class="home-hero-avatar d-none d-sm-inline-flex"><?= e($welcomeInitial) ?></div>
-            <div class="min-w-0">
+            <div class="min-w-0 flex-grow-1">
                 <div class="small text-white text-opacity-75 mb-1">
                     <i class="bi bi-calendar3 me-1"></i><?= e($todayThai) ?> · <?= e($appOrgName) ?>
                 </div>
@@ -404,7 +404,7 @@ require __DIR__ . '/includes/layout_header.php';
             </div>
         </div>
 
-        <div class="d-flex flex-wrap align-items-center gap-2 flex-shrink-0">
+        <div class="d-flex flex-wrap align-items-center gap-2 pt-2 border-top border-white border-opacity-15">
             <?php if ($pendingCount > 0): ?>
                 <a href="<?= e(app_url('/approvals.php')) ?>"
                    class="btn btn-hero-amber fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3"
