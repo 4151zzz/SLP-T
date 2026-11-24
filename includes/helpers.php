@@ -547,3 +547,27 @@ if (!function_exists('ensure_booking_signature_schema')) {
         }
     }
 }
+
+if (!function_exists('ensure_booking_classroom_schema')) {
+    /**
+     * Ensure bookings.class_level and bookings.class_room columns exist.
+     */
+    function ensure_booking_classroom_schema(PDO $pdo): void
+    {
+        static $checked = false;
+        if ($checked) {
+            return;
+        }
+        $checked = true;
+        try {
+            if (!$pdo->query("SHOW COLUMNS FROM bookings LIKE 'class_level'")->fetch()) {
+                $pdo->exec('ALTER TABLE bookings ADD COLUMN class_level VARCHAR(50) NULL AFTER room_id');
+            }
+            if (!$pdo->query("SHOW COLUMNS FROM bookings LIKE 'class_room'")->fetch()) {
+                $pdo->exec('ALTER TABLE bookings ADD COLUMN class_room VARCHAR(80) NULL AFTER class_level');
+            }
+        } catch (Throwable $e) {
+            // Non-fatal if DB account lacks DDL privileges
+        }
+    }
+}

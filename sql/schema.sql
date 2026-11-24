@@ -115,6 +115,8 @@ CREATE TABLE bookings (
     requester_id INT UNSIGNED NOT NULL,
     requester_type ENUM('internal', 'external') NOT NULL DEFAULT 'internal',
     room_id INT UNSIGNED NULL,
+    class_level VARCHAR(50) NULL,
+    class_room VARCHAR(80) NULL,
     vehicle_id INT UNSIGNED NULL,
     driver_id INT UNSIGNED NULL,
     title VARCHAR(200) NOT NULL,

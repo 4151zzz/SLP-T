@@ -335,7 +335,10 @@ require __DIR__ . '/includes/layout_header.php';
                 ['label' => 'วันเวลา',      'value' => thai_date($b['start_datetime'], true, true) . ' – ' . thai_date($b['end_datetime'], true, true)],
             ];
             if ($isRoom) {
-                $detailRows[] = ['label' => 'ห้องประชุม', 'value' => $placeText . ' (' . (int)($b['attendee_count'] ?? 0) . ' คน)'];
+                $classInfo = (!empty($b['class_level']) || !empty($b['class_room']))
+                    ? ' · ชั้น ' . ($b['class_level'] ?: '-') . ' ห้อง ' . ($b['class_room'] ?: '-')
+                    : '';
+                $detailRows[] = ['label' => 'ห้องประชุม/ห้องเรียน', 'value' => $placeText . $classInfo . ' (' . (int)($b['attendee_count'] ?? 0) . ' คน)'];
             } else {
                 $detailRows[] = ['label' => 'ปลายทาง', 'value' => $placeText . ' (' . (int)($b['passenger_count'] ?? 0) . ' คน)'];
                 $vehSummary = !empty($b['vehicle_code'])

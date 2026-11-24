@@ -296,11 +296,16 @@ require __DIR__ . '/includes/layout_header.php';
                     <dd class="col-sm-8"><?= e($booking['purpose'] ?: '-') ?></dd>
 
                     <?php if ($isRoom): ?>
-                        <dt class="col-sm-4 text-muted">ห้องประชุม</dt>
+                        <dt class="col-sm-4 text-muted">ห้องประชุม / ห้องเรียน</dt>
                         <dd class="col-sm-8 fw-semibold">
                             <?= e(($booking['room_code'] ? $booking['room_code'] . ' — ' : '') . ($booking['room_name'] ?: '-')) ?>
                             <?php if (!empty($booking['room_building'])): ?>
                                 <div class="text-muted fw-normal"><?= e($booking['room_building'] . ' ' . ($booking['room_floor'] ?? '')) ?></div>
+                            <?php endif; ?>
+                            <?php if (!empty($booking['class_level']) || !empty($booking['class_room'])): ?>
+                                <div class="text-primary fw-semibold mt-1">
+                                    <?= e(trim('ชั้น ' . ($booking['class_level'] ?: '-') . ' · ห้อง ' . ($booking['class_room'] ?: '-'))) ?>
+                                </div>
                             <?php endif; ?>
                         </dd>
 

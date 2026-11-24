@@ -71,6 +71,8 @@ $defaultEnd = $prefillEnd ? str_replace(' ', 'T', substr($prefillEnd, 0, 16)) : 
 
 $form = [
     'room_id'        => isset($_GET['room_id']) ? (string)(int)$_GET['room_id'] : (isset($rooms[0]['id']) ? (string)(int)$rooms[0]['id'] : ''),
+    'class_level'    => '',
+    'class_room'     => '',
     'title'          => '',
     'purpose'        => '',
     'start_datetime' => $defaultStart,
@@ -84,6 +86,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
 
     $form['room_id']        = trim((string)($_POST['room_id'] ?? ''));
+    $form['class_level']    = mb_substr(trim((string)($_POST['class_level'] ?? '')), 0, 50);
+    $form['class_room']     = mb_substr(trim((string)($_POST['class_room'] ?? '')), 0, 80);
     $form['title']          = trim((string)($_POST['title'] ?? ''));
     $form['purpose']        = trim((string)($_POST['purpose'] ?? ''));
     $form['start_datetime'] = trim((string)($_POST['start_datetime'] ?? ''));
@@ -154,6 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors)) {
         try {
             ensure_booking_signature_schema($pdo);
+            ensure_booking_classroom_schema($pdo);
             $requesterSigPath = save_signature_data_url($_POST['requester_signature_image'] ?? null, 'req_room');
             $refCode = generate_booking_reference($pdo);
             $eqJson = !empty($form['equipment']) ? json_encode($form['equipment'], JSON_UNESCAPED_UNICODE) : null;
@@ -161,24 +166,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtIns = $pdo->prepare(
                 'INSERT INTO bookings (
                     reference_code, booking_type, requester_id, requester_type,
-                    room_id, vehicle_id, driver_id, title, purpose,
+                    room_id, class_level, class_room, vehicle_id, driver_id, title, purpose,
                     start_datetime, end_datetime, attendee_count, equipment_requested,
                     permission_letter_path, permission_letter_original_name, requester_signature,
                     destination, passenger_count, current_step, status
                 ) VALUES (
                     :ref, "room", :req_id, :req_type,
-                    :room_id, NULL, NULL, :title, :purpose,
+                    :room_id, :class_level, :class_room, NULL, NULL, :title, :purpose,
                     :start_dt, :end_dt, :attendees, :eq_json,
                     :perm_path, :perm_orig, :req_sig,
                     NULL, NULL, 1, "pending_head"
                 )'
             );
             $stmtIns->execute([
-                ':ref'       => $refCode,
-                ':req_id'    => (int)$user['id'],
-                ':req_type'  => $isExternal ? USER_TYPE_EXTERNAL : USER_TYPE_INTERNAL,
-                ':room_id'   => $roomId,
-                ':title'     => mb_substr($form['title'], 0, 200),
+                ':ref'         => $refCode,
+                ':req_id'      => (int)$user['id'],
+                ':req_type'    => $isExternal ? USER_TYPE_EXTERNAL : USER_TYPE_INTERNAL,
+                ':room_id'     => $roomId,
+                ':class_level' => $form['class_level'] !== '' ? $form['class_level'] : null,
+                ':class_room'  => $form['class_room'] !== '' ? $form['class_room'] : null,
+                ':title'       => mb_substr($form['title'], 0, 200),
                 ':purpose'   => $form['purpose'] !== '' ? $form['purpose'] : null,
                 ':start_dt'  => $startSql,
                 ':end_dt'    => $endSql,
@@ -334,6 +341,42 @@ require __DIR__ . '/includes/layout_header.php';
                             <?php endforeach; ?>
                         </div>
                     <?php endif; ?>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label for="class_level" class="form-label fw-semibold small text-secondary">ชั้น / ระดับชั้น (กรณียืมห้องเรียน/ระบุชั้น)</label>
+                        <input type="text"
+                               class="form-control touch-target"
+                               id="class_level"
+                               name="class_level"
+                               list="classLevelOptions"
+                               value="<?= e($form['class_level']) ?>"
+                               placeholder="เช่น ม.1, ม.2, ... หรือ ชั้น 2"
+                               data-testid="book-room-class-level">
+                        <datalist id="classLevelOptions">
+                            <option value="ม.1">
+                            <option value="ม.2">
+                            <option value="ม.3">
+                            <option value="ม.4">
+                            <option value="ม.5">
+                            <option value="ม.6">
+                            <option value="ชั้น 1">
+                            <option value="ชั้น 2">
+                            <option value="ชั้น 3">
+                            <option value="ชั้น 4">
+                        </datalist>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="class_room" class="form-label fw-semibold small text-secondary">ห้อง / ห้องเรียน (เช่น 1/1, 3/2)</label>
+                        <input type="text"
+                               class="form-control touch-target"
+                               id="class_room"
+                               name="class_room"
+                               value="<?= e($form['class_room']) ?>"
+                               placeholder="เช่น ม.1/1, ห้อง 204 หรือ ห้องเรียนนักเรียน"
+                               data-testid="book-room-class-room">
+                    </div>
                 </div>
 
                 <div class="mb-3">

@@ -77,8 +77,11 @@ if ($type === 'bookings') {
         $isRoom = ($b['booking_type'] === 'room');
         $st = (string)$b['status'];
         $stThai = $statusLabels[$st]['label'] ?? $st;
+        $classExtra = ($isRoom && (!empty($b['class_level']) || !empty($b['class_room'])))
+            ? ' (ชั้น ' . ($b['class_level'] ?: '-') . ' ห้อง ' . ($b['class_room'] ?: '-') . ')'
+            : '';
         $location = $isRoom
-            ? trim(($b['room_code'] ? $b['room_code'] . ' ' : '') . ($b['room_name'] ?? ''))
+            ? trim(($b['room_code'] ? $b['room_code'] . ' ' : '') . ($b['room_name'] ?? '')) . $classExtra
             : (string)($b['destination'] ?? '');
         $vehInfo = !empty($b['vehicle_code'])
             ? $b['vehicle_code'] . ' (' . ($b['plate_number'] ?? '') . ')'

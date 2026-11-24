@@ -201,10 +201,13 @@ require __DIR__ . '/includes/layout_header.php';
             </tr>
             <?php if ($isRoom): ?>
                 <tr>
-                    <th>ห้องประชุมที่ขอใช้</th>
+                    <th>ห้องประชุม / ห้องเรียนที่ขอใช้</th>
                     <td>
                         <?= e(($booking['room_code'] ? $booking['room_code'] . ' — ' : '') . ($booking['room_name'] ?: '-')) ?>
                         <?= !empty($booking['room_building']) ? '(' . e($booking['room_building'] . ' ' . ($booking['room_floor'] ?? '')) . ')' : '' ?>
+                        <?php if (!empty($booking['class_level']) || !empty($booking['class_room'])): ?>
+                            <div><strong>ชั้น / ห้องเรียน:</strong> <?= e(trim('ชั้น ' . ($booking['class_level'] ?: '-') . ' ห้อง ' . ($booking['class_room'] ?: '-'))) ?></div>
+                        <?php endif; ?>
                     </td>
                 </tr>
                 <tr>

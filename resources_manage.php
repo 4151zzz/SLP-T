@@ -1237,8 +1237,8 @@ require __DIR__ . '/includes/layout_header.php';
                     </div>
 
                     <div class="mb-3">
-                        <label for="rm_name" class="form-label fw-semibold small text-secondary">ชื่อห้องประชุม / ชื่อห้อง <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control touch-target" id="rm_name" name="name" placeholder="เช่น ห้องประชุมราชพฤกษ์ / หอประชุมใหญ่" required>
+                        <label for="rm_name" class="form-label fw-semibold small text-secondary">ชื่อห้องประชุม / ห้องเรียน <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control touch-target" id="rm_name" name="name" placeholder="เช่น ห้องประชุมราชพฤกษ์ / ห้องเรียน ม.1/1" required>
                     </div>
 
                     <div class="row g-3 mb-3">
@@ -1256,13 +1256,19 @@ require __DIR__ . '/includes/layout_header.php';
                             </div>
                         </div>
                         <div class="col-md-5">
-                            <label for="rm_floor" class="form-label fw-semibold small text-secondary">ชั้น</label>
-                            <input type="text" class="form-control touch-target" id="rm_floor" name="floor" list="floorSuggestions" placeholder="เช่น ชั้น 1">
+                            <label for="rm_floor" class="form-label fw-semibold small text-secondary">ชั้น / ระดับชั้น</label>
+                            <input type="text" class="form-control touch-target" id="rm_floor" name="floor" list="floorSuggestions" placeholder="เช่น ชั้น 1 หรือ ม.1">
                             <datalist id="floorSuggestions">
                                 <option value="ชั้น 1">
                                 <option value="ชั้น 2">
                                 <option value="ชั้น 3">
                                 <option value="ชั้น 4">
+                                <option value="ม.1">
+                                <option value="ม.2">
+                                <option value="ม.3">
+                                <option value="ม.4">
+                                <option value="ม.5">
+                                <option value="ม.6">
                                 <option value="ลานเอนกประสงค์">
                             </datalist>
                         </div>
