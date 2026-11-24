@@ -5,6 +5,70 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 
 $user = require_login();
+$pdo = get_pdo();
+ensure_saved_memos_schema($pdo);
+
+$savedIdRaw = trim((string)($_GET['saved_id'] ?? ''));
+$isSavedView = ($savedIdRaw !== '' && ctype_digit($savedIdRaw) && (int)$savedIdRaw > 0);
+$isDownloadDoc = (($_GET['download'] ?? '') === 'doc');
+
+if ($isSavedView) {
+    $savedId = (int)$savedIdRaw;
+    $stmtSaved = $pdo->prepare('SELECT * FROM saved_memos WHERE id = :id LIMIT 1');
+    $stmtSaved->execute([':id' => $savedId]);
+    $savedMemo = $stmtSaved->fetch();
+    if (!$savedMemo) {
+        http_response_code(404);
+        exit('404 Saved memo not found');
+    }
+    $isPrivileged = has_role(PRIVILEGED_VIEW_ROLES, $user);
+    if ((int)$savedMemo['saved_by'] !== (int)$user['id'] && !$isPrivileged) {
+        http_response_code(403);
+        exit('403 Forbidden');
+    }
+
+    if ($isDownloadDoc) {
+        $fname = 'memo_' . preg_replace('/[^A-Za-z0-9_-]/', '', (string)$savedMemo['reference_code']) . '.doc';
+        header('Content-Type: application/msword; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $fname . '"');
+        echo "\xEF\xBB\xBF";
+        echo '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><style>body{font-family:"TH Sarabun New",Tahoma,sans-serif;font-size:16pt;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #000;padding:6px;text-align:left;}</style></head><body>';
+        echo $savedMemo['memo_html'];
+        echo '</body></html>';
+        exit;
+    }
+
+    $pageTitle = 'บันทึกข้อความ (ที่เก็บไว้) ' . (string)$savedMemo['reference_code'];
+    $hideSidebar = true;
+    $extraHead = '<link rel="stylesheet" href="' . e(app_url('/assets/css/print.css')) . '">';
+    require __DIR__ . '/includes/layout_header.php';
+    ?>
+    <div class="no-print container-fluid mb-3" style="max-width: 210mm;">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 bg-white border rounded-4 p-3 shadow-sm">
+            <div class="small text-muted">
+                <i class="bi bi-journal-bookmark-fill me-1 text-primary"></i>
+                สำเนาบันทึกข้อความที่เก็บไว้ในคลัง (เก็บเมื่อ <?= e(thai_date($savedMemo['created_at'], true, true)) ?>)
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" onclick="window.print()" class="btn btn-primary fw-semibold rounded-3 px-3">
+                    <i class="bi bi-printer-fill me-1"></i>พิมพ์ / บันทึกเป็น PDF
+                </button>
+                <a href="<?= e(app_url('/print_memo.php?saved_id=' . $savedId . '&download=doc')) ?>" class="btn btn-success fw-semibold rounded-3 px-3">
+                    <i class="bi bi-download me-1"></i>ดาวน์โหลด (.doc)
+                </a>
+                <a href="<?= e(app_url('/saved_memos.php')) ?>" class="btn btn-outline-secondary rounded-3 px-3">
+                    <i class="bi bi-arrow-left me-1"></i>กลับคลังบันทึกข้อความ
+                </a>
+            </div>
+        </div>
+    </div>
+    <article class="memo-sheet" data-testid="memo-sheet">
+        <?= $savedMemo['memo_html'] ?>
+    </article>
+    <?php
+    require __DIR__ . '/includes/layout_footer.php';
+    exit;
+}
 
 $rawId = trim((string)($_GET['id'] ?? ''));
 if ($rawId === '' || !ctype_digit($rawId) || (int)$rawId <= 0) {
@@ -15,7 +79,6 @@ if ($rawId === '' || !ctype_digit($rawId) || (int)$rawId <= 0) {
 }
 
 $bookingId = (int)$rawId;
-$pdo = get_pdo();
 
 $stmt = $pdo->prepare(
     'SELECT b.*,
@@ -125,26 +188,9 @@ $pageTitle = 'บันทึกข้อความ ' . (string)$booking['refe
 $hideSidebar = true;
 $extraHead = '<link rel="stylesheet" href="' . e(app_url('/assets/css/print.css')) . '">';
 
-require __DIR__ . '/includes/layout_header.php';
+// Capture memo HTML body so we can both download (.doc) and save persistently into saved_memos
+ob_start();
 ?>
-<div class="no-print container-fluid mb-3" style="max-width: 210mm;">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 bg-white border rounded-4 p-3 shadow-sm">
-        <div class="small text-muted">
-            <i class="bi bi-file-earmark-text me-1 text-primary"></i>
-            เอกสารรูปแบบ A4 พร้อมพิมพ์ / บันทึกเป็น PDF
-        </div>
-        <div class="d-flex flex-wrap gap-2">
-            <button type="button" onclick="window.print()" class="btn btn-primary fw-semibold rounded-3 px-3">
-                <i class="bi bi-printer-fill me-1"></i>พิมพ์ / บันทึกเป็น PDF
-            </button>
-            <a href="<?= e(app_url('/booking_detail.php?id=' . $bookingId)) ?>" class="btn btn-outline-secondary rounded-3 px-3">
-                <i class="bi bi-arrow-left me-1"></i>กลับหน้ารายละเอียด
-            </a>
-        </div>
-    </div>
-</div>
-
-<article class="memo-sheet" data-testid="memo-sheet">
     <div class="text-center border-bottom border-dark pb-2 mb-3">
         <div class="memo-title">บันทึกข้อความ</div>
     </div>
@@ -323,5 +369,85 @@ require __DIR__ . '/includes/layout_header.php';
             <?php endforeach; ?>
         </div>
     </div>
+<?php
+$memoInnerHtml = (string)ob_get_clean();
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    verify_csrf();
+    $action = trim((string)($_POST['action'] ?? ''));
+    if ($action === 'save_memo') {
+        $stmtSave = $pdo->prepare(
+            'INSERT INTO saved_memos (
+                booking_id, reference_code, booking_type, title, requester_name,
+                booking_status, status_label, memo_html, saved_by
+            ) VALUES (
+                :bid, :ref, :btype, :title, :rname,
+                :bst, :slabel, :html, :uid
+            )'
+        );
+        $stmtSave->execute([
+            ':bid'    => $bookingId,
+            ':ref'    => (string)$booking['reference_code'],
+            ':btype'  => (string)$booking['booking_type'],
+            ':title'  => (string)$booking['title'],
+            ':rname'  => (string)$booking['requester_name'],
+            ':bst'    => (string)$booking['status'],
+            ':slabel' => (string)$statusMeta['label'],
+            ':html'   => $memoInnerHtml,
+            ':uid'    => (int)$user['id'],
+        ]);
+        flash('success', 'เก็บบันทึกข้อความ "' . $booking['reference_code'] . '" เข้าคลังเรียบร้อยแล้ว (จะไม่หายจนกว่าจะกดลบ)');
+        redirect(app_url('/print_memo.php?id=' . $bookingId));
+    }
+}
+
+if ($isDownloadDoc) {
+    $fname = 'memo_' . preg_replace('/[^A-Za-z0-9_-]/', '', (string)$booking['reference_code']) . '.doc';
+    header('Content-Type: application/msword; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $fname . '"');
+    echo "\xEF\xBB\xBF";
+    echo '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><style>body{font-family:"TH Sarabun New",Tahoma,sans-serif;font-size:16pt;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #000;padding:6px;text-align:left;}</style></head><body>';
+    echo $memoInnerHtml;
+    echo '</body></html>';
+    exit;
+}
+
+require __DIR__ . '/includes/layout_header.php';
+?>
+<div class="no-print container-fluid mb-3" style="max-width: 210mm;">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 bg-white border rounded-4 p-3 shadow-sm">
+        <div class="small text-muted">
+            <i class="bi bi-file-earmark-text me-1 text-primary"></i>
+            สถานะคำขอ: <span class="badge text-bg-<?= e($statusMeta['badge']) ?>"><?= e($statusMeta['label']) ?></span>
+            · พร้อมพิมพ์ PDF / ดาวน์โหลด / เก็บเข้าคลัง
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <button type="button" onclick="window.print()" class="btn btn-primary fw-semibold rounded-3 px-3">
+                <i class="bi bi-printer-fill me-1"></i>พิมพ์ / บันทึกเป็น PDF
+            </button>
+            <a href="<?= e(app_url('/print_memo.php?id=' . $bookingId . '&download=doc')) ?>"
+               class="btn btn-success fw-semibold rounded-3 px-3"
+               data-testid="btn-download-memo-doc">
+                <i class="bi bi-download me-1"></i>ดาวน์โหลด (.doc)
+            </a>
+            <form method="post" action="<?= e(app_url('/print_memo.php?id=' . $bookingId)) ?>" class="d-inline">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="save_memo">
+                <button type="submit" class="btn btn-warning text-dark fw-semibold rounded-3 px-3" data-testid="btn-save-memo">
+                    <i class="bi bi-bookmark-plus-fill me-1"></i>เก็บเข้าคลังบันทึกข้อความ
+                </button>
+            </form>
+            <a href="<?= e(app_url('/saved_memos.php')) ?>" class="btn btn-outline-primary rounded-3 px-3">
+                <i class="bi bi-journal-bookmark-fill me-1"></i>คลังบันทึกข้อความ
+            </a>
+            <a href="<?= e(app_url('/booking_detail.php?id=' . $bookingId)) ?>" class="btn btn-outline-secondary rounded-3 px-3">
+                <i class="bi bi-arrow-left me-1"></i>กลับ
+            </a>
+        </div>
+    </div>
+</div>
+
+<article class="memo-sheet" data-testid="memo-sheet">
+    <?= $memoInnerHtml ?>
 </article>
 <?php require __DIR__ . '/includes/layout_footer.php'; ?>

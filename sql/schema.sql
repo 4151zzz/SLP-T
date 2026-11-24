@@ -288,4 +288,21 @@ CREATE TABLE IF NOT EXISTS system_settings (
 
 INSERT IGNORE INTO system_settings (setting_key, setting_value) VALUES ('qr_enabled', '1');
 
+-- 13. saved_memos
+CREATE TABLE IF NOT EXISTS saved_memos (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    booking_id INT UNSIGNED NULL,
+    reference_code VARCHAR(50) NOT NULL,
+    booking_type VARCHAR(20) NOT NULL DEFAULT 'room',
+    title VARCHAR(255) NOT NULL,
+    requester_name VARCHAR(150) NOT NULL,
+    booking_status VARCHAR(40) NOT NULL,
+    status_label VARCHAR(100) NOT NULL,
+    memo_html LONGTEXT NOT NULL,
+    saved_by INT UNSIGNED NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_saved_memos_user (saved_by, created_at),
+    KEY idx_saved_memos_status (booking_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;

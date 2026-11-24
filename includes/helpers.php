@@ -279,6 +279,15 @@ if (!function_exists('nav_items')) {
                 'badge'  => null,
             ],
             [
+                'key'    => 'saved_memos',
+                'href'   => app_url('/saved_memos.php'),
+                'label'  => 'คลังบันทึกข้อความ',
+                'icon'   => 'bi-journal-bookmark-fill',
+                'testid' => 'nav-saved-memos',
+                'roles'  => $allAuthenticated,
+                'badge'  => null,
+            ],
+            [
                 'key'    => 'approvals',
                 'href'   => app_url('/approvals.php'),
                 'label'  => 'พิจารณาอนุมัติ',
@@ -370,13 +379,13 @@ if (!function_exists('nav_items')) {
         }
 
         $rolePriority = [
-            ROLE_DIRECTOR      => ['dashboard', 'approvals', 'calendar', 'my_bookings', 'book_room', 'book_vehicle', 'assets_borrow', 'maintenance'],
-            ROLE_VICE_DIRECTOR => ['dashboard', 'approvals', 'calendar', 'my_bookings', 'book_room', 'book_vehicle', 'assets_borrow', 'maintenance'],
-            ROLE_HEAD          => ['approvals', 'dashboard', 'calendar', 'book_room', 'book_vehicle', 'my_bookings', 'assets_borrow', 'maintenance'],
-            ROLE_STAFF         => ['approvals', 'maintenance_manage', 'assets_borrow', 'qr_codes', 'calendar', 'dashboard', 'book_room', 'book_vehicle', 'my_bookings', 'maintenance'],
-            ROLE_ADMIN         => ['dashboard', 'approvals', 'users_manage', 'resources_manage', 'maintenance_manage', 'assets_borrow', 'qr_codes', 'calendar', 'book_room', 'book_vehicle', 'my_bookings', 'maintenance'],
-            ROLE_USER          => ['calendar', 'book_room', 'book_vehicle', 'my_bookings', 'assets_borrow', 'maintenance'],
-            ROLE_EXTERNAL_USER => ['book_room', 'my_bookings', 'calendar', 'maintenance'],
+            ROLE_DIRECTOR      => ['dashboard', 'print_report', 'approvals', 'saved_memos', 'calendar', 'my_bookings', 'book_room', 'book_vehicle', 'assets_borrow', 'maintenance'],
+            ROLE_VICE_DIRECTOR => ['dashboard', 'print_report', 'approvals', 'saved_memos', 'calendar', 'my_bookings', 'book_room', 'book_vehicle', 'assets_borrow', 'maintenance'],
+            ROLE_HEAD          => ['approvals', 'dashboard', 'print_report', 'saved_memos', 'calendar', 'book_room', 'book_vehicle', 'my_bookings', 'assets_borrow', 'maintenance'],
+            ROLE_STAFF         => ['approvals', 'maintenance_manage', 'assets_borrow', 'qr_codes', 'saved_memos', 'print_report', 'calendar', 'dashboard', 'book_room', 'book_vehicle', 'my_bookings', 'maintenance'],
+            ROLE_ADMIN         => ['dashboard', 'print_report', 'approvals', 'saved_memos', 'users_manage', 'resources_manage', 'maintenance_manage', 'assets_borrow', 'qr_codes', 'calendar', 'book_room', 'book_vehicle', 'my_bookings', 'maintenance'],
+            ROLE_USER          => ['calendar', 'book_room', 'book_vehicle', 'my_bookings', 'saved_memos', 'assets_borrow', 'maintenance'],
+            ROLE_EXTERNAL_USER => ['book_room', 'my_bookings', 'saved_memos', 'calendar', 'maintenance'],
         ];
         if (isset($rolePriority[$role])) {
             $orderMap = array_flip($rolePriority[$role]);
@@ -575,6 +584,41 @@ if (!function_exists('ensure_booking_classroom_schema')) {
             if (!$pdo->query("SHOW COLUMNS FROM bookings LIKE 'class_room'")->fetch()) {
                 $pdo->exec('ALTER TABLE bookings ADD COLUMN class_room VARCHAR(80) NULL AFTER class_level');
             }
+        } catch (Throwable $e) {
+            // Non-fatal if DB account lacks DDL privileges
+        }
+    }
+}
+
+if (!function_exists('ensure_saved_memos_schema')) {
+    /**
+     * Ensure saved_memos archive table exists.
+     */
+    function ensure_saved_memos_schema(PDO $pdo): void
+    {
+        static $checked = false;
+        if ($checked) {
+            return;
+        }
+        $checked = true;
+        try {
+            $pdo->exec(
+                'CREATE TABLE IF NOT EXISTS saved_memos (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    booking_id INT UNSIGNED NULL,
+                    reference_code VARCHAR(50) NOT NULL,
+                    booking_type VARCHAR(20) NOT NULL DEFAULT \'room\',
+                    title VARCHAR(255) NOT NULL,
+                    requester_name VARCHAR(150) NOT NULL,
+                    booking_status VARCHAR(40) NOT NULL,
+                    status_label VARCHAR(100) NOT NULL,
+                    memo_html LONGTEXT NOT NULL,
+                    saved_by INT UNSIGNED NOT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    KEY idx_saved_memos_user (saved_by, created_at),
+                    KEY idx_saved_memos_status (booking_status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+            );
         } catch (Throwable $e) {
             // Non-fatal if DB account lacks DDL privileges
         }
