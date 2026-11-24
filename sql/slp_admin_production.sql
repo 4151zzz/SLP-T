@@ -138,7 +138,7 @@ CREATE TABLE bookings (
     destination VARCHAR(255) NULL,
     passenger_count INT UNSIGNED NULL,
     current_step TINYINT UNSIGNED NOT NULL DEFAULT 1,
-    status ENUM('pending_head', 'pending_vice', 'pending_director', 'approved', 'rejected') NOT NULL DEFAULT 'pending_head',
+    status ENUM('pending_head', 'pending_vice', 'pending_director', 'approved', 'rejected', 'cancelled') NOT NULL DEFAULT 'pending_head',
     rejection_reason TEXT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

@@ -97,6 +97,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    $uploadedPath = null;
+    $uploadedOrigName = null;
+    if (empty($errors)) {
+        $uploadRes = upload_permission_letter('permission_letter', true);
+        if (!$uploadRes['ok']) {
+            $errors[] = $uploadRes['error'] ?? 'กรุณาแนบไฟล์ใบคำสั่ง / หนังสือขออนุญาตใช้รถ';
+        } elseif ($uploadRes['uploaded']) {
+            $uploadedPath = $uploadRes['path'];
+            $uploadedOrigName = $uploadRes['original_name'];
+        }
+    }
+
     if (empty($errors)) {
         try {
             ensure_booking_signature_schema($pdo);
@@ -113,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     :ref, "vehicle", :req_id, "internal",
                     NULL, :vehicle_id, NULL, :title, :purpose,
                     :start_dt, :end_dt, NULL, NULL,
-                    NULL, NULL, :req_sig,
+                    :perm_path, :perm_orig, :req_sig,
                     :dest, :passengers, 1, "pending_head"
                 )'
             );
@@ -125,6 +137,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':purpose'    => $form['purpose'] !== '' ? $form['purpose'] : null,
                 ':start_dt'   => $startSql,
                 ':end_dt'     => $endSql,
+                ':perm_path'  => $uploadedPath,
+                ':perm_orig'  => $uploadedOrigName,
                 ':req_sig'    => $requesterSigPath,
                 ':dest'       => mb_substr($form['destination'], 0, 255),
                 ':passengers' => $passengerCount,
@@ -204,7 +218,7 @@ require __DIR__ . '/includes/layout_header.php';
                 </div>
             <?php endif; ?>
 
-            <form method="post" action="<?= e(app_url('/book_vehicle.php')) ?>" novalidate>
+            <form method="post" action="<?= e(app_url('/book_vehicle.php')) ?>" enctype="multipart/form-data" novalidate>
                 <?= csrf_field() ?>
 
                 <div class="mb-3">
@@ -287,6 +301,20 @@ require __DIR__ . '/includes/layout_header.php';
                               name="purpose"
                               rows="2"
                               placeholder="ระบุรายละเอียดหรือหมายเหตุเพิ่มเติม"><?= e($form['purpose']) ?></textarea>
+                </div>
+
+                <div class="mb-4">
+                    <label for="permission_letter" class="form-label fw-semibold small text-secondary">
+                        ไฟล์ใบคำสั่ง / หนังสือขออนุญาตใช้รถ (PDF, JPG, PNG ไม่เกิน 2MB) <span class="text-danger">*</span>
+                    </label>
+                    <input type="file"
+                           class="form-control touch-target"
+                           id="permission_letter"
+                           name="permission_letter"
+                           accept=".pdf,application/pdf,image/jpeg,image/png"
+                           data-no-resize="true"
+                           required
+                           data-testid="book-vehicle-file">
                 </div>
 
                 <!-- Requester Signature Pad -->

@@ -8,6 +8,23 @@ $approverRoles = [ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE
 $user = require_role($approverRoles);
 $pdo = get_pdo();
 
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    verify_csrf();
+    $postAction = trim((string)($_POST['action'] ?? ''));
+    $targetBid = (int)($_POST['booking_id'] ?? 0);
+    $returnTo = trim((string)($_POST['return_to'] ?? ''));
+    $redirectTarget = ($returnTo === 'dashboard') ? app_url('/dashboard.php') : app_url('/approvals.php');
+    if ($postAction === 'cancel_booking') {
+        $res = cancel_booking_record($pdo, $targetBid, $user, trim((string)($_POST['reason'] ?? '')));
+        flash($res['ok'] ? 'success' : 'danger', $res['message']);
+        redirect($redirectTarget);
+    } elseif ($postAction === 'delete_booking') {
+        $res = delete_booking_record($pdo, $targetBid, $user);
+        flash($res['ok'] ? 'success' : 'danger', $res['message']);
+        redirect($redirectTarget);
+    }
+}
+
 $role = (string)($user['role'] ?? '');
 $tab = trim((string)($_GET['tab'] ?? 'mine'));
 if (!in_array($tab, ['mine', 'all_pending', 'history'], true)) {
@@ -25,11 +42,11 @@ $myQueueSql = match ($role) {
 
 $countMine = (int)$pdo->query("SELECT COUNT(*) FROM bookings b WHERE {$myQueueSql}")->fetchColumn();
 $countAllPending = (int)$pdo->query("SELECT COUNT(*) FROM bookings WHERE status IN ('pending_head', 'pending_vice', 'pending_director')")->fetchColumn();
-$countHistory = (int)$pdo->query("SELECT COUNT(*) FROM bookings WHERE status IN ('approved', 'rejected')")->fetchColumn();
+$countHistory = (int)$pdo->query("SELECT COUNT(*) FROM bookings WHERE status IN ('approved', 'rejected', 'cancelled')")->fetchColumn();
 
 $whereSql = match ($tab) {
     'all_pending' => "b.status IN ('pending_head', 'pending_vice', 'pending_director')",
-    'history'     => "b.status IN ('approved', 'rejected')",
+    'history'     => "b.status IN ('approved', 'rejected', 'cancelled')",
     default       => $myQueueSql,
 };
 
@@ -438,6 +455,26 @@ require __DIR__ . '/includes/layout_header.php';
                                 <span>บันทึกข้อความ</span>
                             </a>
                         <?php endif; ?>
+
+                        <?php if ($st !== 'cancelled'): ?>
+                            <form method="post" action="<?= e(app_url('/approvals.php')) ?>" class="d-inline" data-confirm="ต้องการยกเลิกคำขอ &quot;<?= e($b['reference_code']) ?>&quot; ใช่หรือไม่?">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="action" value="cancel_booking">
+                                <input type="hidden" name="booking_id" value="<?= $bid ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-warning text-dark rounded-3 px-2 fw-semibold touch-target" data-testid="btn-approver-cancel-<?= $bid ?>">
+                                    <i class="bi bi-x-circle me-1"></i>ยกเลิกคำขอ
+                                </button>
+                            </form>
+                        <?php endif; ?>
+
+                        <form method="post" action="<?= e(app_url('/approvals.php')) ?>" class="d-inline" data-confirm="ต้องการลบข้อมูลคิวงาน &quot;<?= e($b['reference_code']) ?>&quot; ออกจากฐานข้อมูลอย่างถาวรใช่หรือไม่?" data-confirm-danger="1">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="action" value="delete_booking">
+                            <input type="hidden" name="booking_id" value="<?= $bid ?>">
+                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-3 px-2 touch-target" title="ลบข้อมูลคิวงานออกจากฐานข้อมูล" data-testid="btn-approver-delete-<?= $bid ?>">
+                                <i class="bi bi-trash3"></i>
+                            </button>
+                        </form>
                     </div>
                 </div>
 

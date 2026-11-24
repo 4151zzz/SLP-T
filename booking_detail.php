@@ -20,6 +20,23 @@ if ($rawId === '' || !ctype_digit($rawId) || (int)$rawId <= 0) {
 $bookingId = (int)$rawId;
 $pdo = get_pdo();
 
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    verify_csrf();
+    $postAction = trim((string)($_POST['action'] ?? ''));
+    if ($postAction === 'cancel_booking') {
+        $res = cancel_booking_record($pdo, $bookingId, $user, trim((string)($_POST['reason'] ?? '')));
+        flash($res['ok'] ? 'success' : 'danger', $res['message']);
+        redirect(app_url('/booking_detail.php?id=' . $bookingId));
+    } elseif ($postAction === 'delete_booking') {
+        $res = delete_booking_record($pdo, $bookingId, $user);
+        flash($res['ok'] ? 'success' : 'danger', $res['message']);
+        if ($res['ok']) {
+            redirect(has_role(PRIVILEGED_VIEW_ROLES, $user) ? app_url('/approvals.php') : app_url('/my_bookings.php'));
+        }
+        redirect(app_url('/booking_detail.php?id=' . $bookingId));
+    }
+}
+
 $stmt = $pdo->prepare(
     'SELECT b.*,
             u.full_name AS requester_name, u.position_title AS requester_position,
@@ -214,6 +231,24 @@ require __DIR__ . '/includes/layout_header.php';
                 <i class="bi bi-printer-fill"></i>
                 <span>พิมพ์บันทึกข้อความ (A4)</span>
             </a>
+            <?php if ($statusCode !== 'cancelled' && ($isOwner || has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $user))): ?>
+                <form method="post" action="<?= e(app_url('/booking_detail.php?id=' . $bookingId)) ?>" class="d-inline" data-confirm="ต้องการยกเลิกคำขอ &quot;<?= e($booking['reference_code']) ?>&quot; ใช่หรือไม่?">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="cancel_booking">
+                    <button type="submit" class="btn btn-outline-warning text-dark fw-semibold touch-target rounded-3 px-3" data-testid="btn-detail-cancel">
+                        <i class="bi bi-x-circle me-1"></i>ยกเลิกคำขอ
+                    </button>
+                </form>
+            <?php endif; ?>
+            <?php if (has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $user) || ($isOwner && $statusCode !== 'approved')): ?>
+                <form method="post" action="<?= e(app_url('/booking_detail.php?id=' . $bookingId)) ?>" class="d-inline" data-confirm="ต้องการลบข้อมูลคิวงาน &quot;<?= e($booking['reference_code']) ?>&quot; ออกจากฐานข้อมูลอย่างถาวรใช่หรือไม่?" data-confirm-danger="1">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="delete_booking">
+                    <button type="submit" class="btn btn-outline-danger fw-semibold touch-target rounded-3 px-3" data-testid="btn-detail-delete">
+                        <i class="bi bi-trash3 me-1"></i>ลบคำขอ
+                    </button>
+                </form>
+            <?php endif; ?>
             <a href="<?= e($backUrl) ?>"
                class="btn btn-soft-secondary fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3">
                 <i class="bi bi-arrow-left"></i>
@@ -316,17 +351,6 @@ require __DIR__ . '/includes/layout_header.php';
                         <dd class="col-sm-8">
                             <?= !empty($equipmentNames) ? e(implode(', ', $equipmentNames)) : 'ไม่ได้ขอใช้อุปกรณ์เสริม' ?>
                         </dd>
-
-                        <?php if (!empty($booking['permission_letter_path'])): ?>
-                            <dt class="col-sm-4 text-muted">หนังสือขออนุญาต</dt>
-                            <dd class="col-sm-8">
-                                <a href="<?= e(app_url('/download.php?type=permission&booking_id=' . $bookingId . '&download=1')) ?>"
-                                   class="btn btn-sm btn-outline-primary rounded-3">
-                                    <i class="bi bi-download me-1"></i>
-                                    <?= e($booking['permission_letter_original_name'] ?: 'ดาวน์โหลดเอกสารแนบ') ?>
-                                </a>
-                            </dd>
-                        <?php endif; ?>
                     <?php else: ?>
                         <dt class="col-sm-4 text-muted">สถานที่ปลายทาง</dt>
                         <dd class="col-sm-8 fw-semibold"><?= e($booking['destination'] ?: '-') ?></dd>
@@ -354,6 +378,17 @@ require __DIR__ . '/includes/layout_header.php';
                             <?php else: ?>
                                 <span class="text-muted">รอเจ้าหน้าที่จัดสรรคนขับ</span>
                             <?php endif; ?>
+                        </dd>
+                    <?php endif; ?>
+
+                    <?php if (!empty($booking['permission_letter_path'])): ?>
+                        <dt class="col-sm-4 text-muted"><?= $isRoom ? 'หนังสือขออนุญาต' : 'ใบคำสั่ง / เอกสารแนบ' ?></dt>
+                        <dd class="col-sm-8">
+                            <a href="<?= e(app_url('/download.php?type=permission&booking_id=' . $bookingId . '&download=1')) ?>"
+                               class="btn btn-sm btn-outline-primary rounded-3">
+                                <i class="bi bi-download me-1"></i>
+                                <?= e($booking['permission_letter_original_name'] ?: 'ดาวน์โหลดเอกสารแนบ') ?>
+                            </a>
                         </dd>
                     <?php endif; ?>
                 </dl>

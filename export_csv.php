@@ -7,7 +7,7 @@ $allowedRoles = [ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_
 require_role($allowedRoles);
 
 $type = trim((string)($_GET['type'] ?? ''));
-if (!in_array($type, ['bookings', 'maintenance'], true)) {
+if (!in_array($type, ['bookings', 'bookings_room', 'bookings_vehicle', 'maintenance'], true)) {
     http_response_code(400);
     header('Content-Type: text/plain; charset=UTF-8');
     exit('400 Bad Request: Invalid export type');
@@ -39,7 +39,7 @@ function csv_safe_cell(mixed $val): string
 $pdo = get_pdo();
 $rowsToWrite = [];
 
-if ($type === 'bookings') {
+if (in_array($type, ['bookings', 'bookings_room', 'bookings_vehicle'], true)) {
     $header = [
         'รหัสอ้างอิง',
         'ประเภทคำขอ',
@@ -57,6 +57,18 @@ if ($type === 'bookings') {
         'เหตุผลไม่อนุมัติ',
     ];
 
+    $whereClauses = [];
+    $params = [];
+    if ($type === 'bookings_room') {
+        $whereClauses[] = "b.booking_type = 'room'";
+    } elseif ($type === 'bookings_vehicle') {
+        $whereClauses[] = "b.booking_type = 'vehicle'";
+    }
+    if (!$exportAll) {
+        $whereClauses[] = "DATE_FORMAT(b.start_datetime, '%Y-%m') = :month";
+        $params[':month'] = $month;
+    }
+
     $sql = "SELECT b.*,
                 u.full_name AS requester_name, u.department AS requester_dept, u.organization AS requester_org,
                 r.room_code, r.name AS room_name,
@@ -65,12 +77,12 @@ if ($type === 'bookings') {
          INNER JOIN users u ON u.id = b.requester_id
          LEFT JOIN rooms r ON r.id = b.room_id
          LEFT JOIN vehicles v ON v.id = b.vehicle_id";
-    if (!$exportAll) {
-        $sql .= " WHERE DATE_FORMAT(b.start_datetime, '%Y-%m') = :month";
+    if (!empty($whereClauses)) {
+        $sql .= ' WHERE ' . implode(' AND ', $whereClauses);
     }
     $sql .= " ORDER BY b.id ASC";
     $stmt = $pdo->prepare($sql);
-    $stmt->execute($exportAll ? [] : [':month' => $month]);
+    $stmt->execute($params);
     $statusLabels = defined('BOOKING_STATUS_LABELS') ? BOOKING_STATUS_LABELS : [];
 
     foreach ($stmt->fetchAll() as $b) {

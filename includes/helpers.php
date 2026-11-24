@@ -448,6 +448,85 @@ if (!function_exists('ensure_resource_image_schema')) {
     }
 }
 
+if (!function_exists('cancel_booking_record')) {
+    /**
+     * Cancel a booking by its requester or an approver/admin.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    function cancel_booking_record(PDO $pdo, int $bookingId, array $actorUser, string $reason = ''): array
+    {
+        if ($bookingId <= 0) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคำขอที่ต้องการยกเลิก'];
+        }
+        ensure_booking_cancelled_schema($pdo);
+        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $bookingId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return ['ok' => false, 'message' => 'ไม่พบคำขอจองนี้ในระบบ'];
+        }
+        $uid = (int)$actorUser['id'];
+        $isOwner = ((int)$row['requester_id'] === $uid);
+        $isApprover = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
+        if (!$isOwner && !$isApprover) {
+            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ยกเลิกคำขอจองนี้'];
+        }
+        if ((string)$row['status'] === 'cancelled') {
+            return ['ok' => false, 'message' => 'คำขอนี้ถูกยกเลิกไปแล้ว'];
+        }
+        $cancelReason = trim($reason) !== ''
+            ? trim($reason)
+            : ('ยกเลิกโดย' . ($isOwner ? 'ผู้ขอจอง' : 'ผู้พิจารณา/ผู้ดูแล') . ' (' . ($actorUser['full_name'] ?? '') . ')');
+        $upd = $pdo->prepare("UPDATE bookings SET status = 'cancelled', rejection_reason = :r WHERE id = :id");
+        $upd->execute([':r' => mb_substr($cancelReason, 0, 500), ':id' => $bookingId]);
+        return ['ok' => true, 'message' => 'ยกเลิกคำขอ "' . $row['reference_code'] . '" เรียบร้อยแล้ว'];
+    }
+}
+
+if (!function_exists('delete_booking_record')) {
+    /**
+     * Permanently delete a booking queue record from the database.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser): array
+    {
+        if ($bookingId <= 0) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานที่ต้องการลบ'];
+        }
+        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $bookingId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานนี้ในระบบ'];
+        }
+        $uid = (int)$actorUser['id'];
+        $isOwner = ((int)$row['requester_id'] === $uid);
+        $isPrivileged = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
+        if (!$isPrivileged && !($isOwner && (string)$row['status'] !== 'approved')) {
+            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ลบข้อมูลคิวงานนี้'];
+        }
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM approval_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            $pdo->prepare('DELETE FROM notification_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            if (function_exists('ensure_saved_memos_schema')) {
+                ensure_saved_memos_schema($pdo);
+                $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            }
+            $pdo->prepare('DELETE FROM bookings WHERE id = :id')->execute([':id' => $bookingId]);
+            $pdo->commit();
+            return ['ok' => true, 'message' => 'ลบข้อมูลคิวงาน "' . $row['reference_code'] . '" ออกจากฐานข้อมูลเรียบร้อยแล้ว'];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'message' => 'ไม่สามารถลบข้อมูลคิวงานได้'];
+        }
+    }
+}
+
 if (!function_exists('normalize_image_url')) {
     /**
      * Validate an external HTTP/HTTPS image URL and auto-convert Google Drive share links.
@@ -511,6 +590,85 @@ if (!function_exists('ensure_system_settings_schema')) {
     }
 }
 
+if (!function_exists('cancel_booking_record')) {
+    /**
+     * Cancel a booking by its requester or an approver/admin.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    function cancel_booking_record(PDO $pdo, int $bookingId, array $actorUser, string $reason = ''): array
+    {
+        if ($bookingId <= 0) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคำขอที่ต้องการยกเลิก'];
+        }
+        ensure_booking_cancelled_schema($pdo);
+        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $bookingId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return ['ok' => false, 'message' => 'ไม่พบคำขอจองนี้ในระบบ'];
+        }
+        $uid = (int)$actorUser['id'];
+        $isOwner = ((int)$row['requester_id'] === $uid);
+        $isApprover = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
+        if (!$isOwner && !$isApprover) {
+            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ยกเลิกคำขอจองนี้'];
+        }
+        if ((string)$row['status'] === 'cancelled') {
+            return ['ok' => false, 'message' => 'คำขอนี้ถูกยกเลิกไปแล้ว'];
+        }
+        $cancelReason = trim($reason) !== ''
+            ? trim($reason)
+            : ('ยกเลิกโดย' . ($isOwner ? 'ผู้ขอจอง' : 'ผู้พิจารณา/ผู้ดูแล') . ' (' . ($actorUser['full_name'] ?? '') . ')');
+        $upd = $pdo->prepare("UPDATE bookings SET status = 'cancelled', rejection_reason = :r WHERE id = :id");
+        $upd->execute([':r' => mb_substr($cancelReason, 0, 500), ':id' => $bookingId]);
+        return ['ok' => true, 'message' => 'ยกเลิกคำขอ "' . $row['reference_code'] . '" เรียบร้อยแล้ว'];
+    }
+}
+
+if (!function_exists('delete_booking_record')) {
+    /**
+     * Permanently delete a booking queue record from the database.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser): array
+    {
+        if ($bookingId <= 0) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานที่ต้องการลบ'];
+        }
+        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $bookingId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานนี้ในระบบ'];
+        }
+        $uid = (int)$actorUser['id'];
+        $isOwner = ((int)$row['requester_id'] === $uid);
+        $isPrivileged = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
+        if (!$isPrivileged && !($isOwner && (string)$row['status'] !== 'approved')) {
+            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ลบข้อมูลคิวงานนี้'];
+        }
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM approval_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            $pdo->prepare('DELETE FROM notification_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            if (function_exists('ensure_saved_memos_schema')) {
+                ensure_saved_memos_schema($pdo);
+                $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            }
+            $pdo->prepare('DELETE FROM bookings WHERE id = :id')->execute([':id' => $bookingId]);
+            $pdo->commit();
+            return ['ok' => true, 'message' => 'ลบข้อมูลคิวงาน "' . $row['reference_code'] . '" ออกจากฐานข้อมูลเรียบร้อยแล้ว'];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'message' => 'ไม่สามารถลบข้อมูลคิวงานได้'];
+        }
+    }
+}
+
 if (!function_exists('is_qr_enabled')) {
     /**
      * Check whether QR code generation and scan shortcuts are enabled.
@@ -566,6 +724,85 @@ if (!function_exists('ensure_booking_signature_schema')) {
     }
 }
 
+if (!function_exists('cancel_booking_record')) {
+    /**
+     * Cancel a booking by its requester or an approver/admin.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    function cancel_booking_record(PDO $pdo, int $bookingId, array $actorUser, string $reason = ''): array
+    {
+        if ($bookingId <= 0) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคำขอที่ต้องการยกเลิก'];
+        }
+        ensure_booking_cancelled_schema($pdo);
+        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $bookingId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return ['ok' => false, 'message' => 'ไม่พบคำขอจองนี้ในระบบ'];
+        }
+        $uid = (int)$actorUser['id'];
+        $isOwner = ((int)$row['requester_id'] === $uid);
+        $isApprover = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
+        if (!$isOwner && !$isApprover) {
+            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ยกเลิกคำขอจองนี้'];
+        }
+        if ((string)$row['status'] === 'cancelled') {
+            return ['ok' => false, 'message' => 'คำขอนี้ถูกยกเลิกไปแล้ว'];
+        }
+        $cancelReason = trim($reason) !== ''
+            ? trim($reason)
+            : ('ยกเลิกโดย' . ($isOwner ? 'ผู้ขอจอง' : 'ผู้พิจารณา/ผู้ดูแล') . ' (' . ($actorUser['full_name'] ?? '') . ')');
+        $upd = $pdo->prepare("UPDATE bookings SET status = 'cancelled', rejection_reason = :r WHERE id = :id");
+        $upd->execute([':r' => mb_substr($cancelReason, 0, 500), ':id' => $bookingId]);
+        return ['ok' => true, 'message' => 'ยกเลิกคำขอ "' . $row['reference_code'] . '" เรียบร้อยแล้ว'];
+    }
+}
+
+if (!function_exists('delete_booking_record')) {
+    /**
+     * Permanently delete a booking queue record from the database.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser): array
+    {
+        if ($bookingId <= 0) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานที่ต้องการลบ'];
+        }
+        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $bookingId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานนี้ในระบบ'];
+        }
+        $uid = (int)$actorUser['id'];
+        $isOwner = ((int)$row['requester_id'] === $uid);
+        $isPrivileged = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
+        if (!$isPrivileged && !($isOwner && (string)$row['status'] !== 'approved')) {
+            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ลบข้อมูลคิวงานนี้'];
+        }
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM approval_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            $pdo->prepare('DELETE FROM notification_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            if (function_exists('ensure_saved_memos_schema')) {
+                ensure_saved_memos_schema($pdo);
+                $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            }
+            $pdo->prepare('DELETE FROM bookings WHERE id = :id')->execute([':id' => $bookingId]);
+            $pdo->commit();
+            return ['ok' => true, 'message' => 'ลบข้อมูลคิวงาน "' . $row['reference_code'] . '" ออกจากฐานข้อมูลเรียบร้อยแล้ว'];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'message' => 'ไม่สามารถลบข้อมูลคิวงานได้'];
+        }
+    }
+}
+
 if (!function_exists('ensure_booking_classroom_schema')) {
     /**
      * Ensure bookings.class_level and bookings.class_room columns exist.
@@ -586,6 +823,85 @@ if (!function_exists('ensure_booking_classroom_schema')) {
             }
         } catch (Throwable $e) {
             // Non-fatal if DB account lacks DDL privileges
+        }
+    }
+}
+
+if (!function_exists('cancel_booking_record')) {
+    /**
+     * Cancel a booking by its requester or an approver/admin.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    function cancel_booking_record(PDO $pdo, int $bookingId, array $actorUser, string $reason = ''): array
+    {
+        if ($bookingId <= 0) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคำขอที่ต้องการยกเลิก'];
+        }
+        ensure_booking_cancelled_schema($pdo);
+        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $bookingId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return ['ok' => false, 'message' => 'ไม่พบคำขอจองนี้ในระบบ'];
+        }
+        $uid = (int)$actorUser['id'];
+        $isOwner = ((int)$row['requester_id'] === $uid);
+        $isApprover = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
+        if (!$isOwner && !$isApprover) {
+            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ยกเลิกคำขอจองนี้'];
+        }
+        if ((string)$row['status'] === 'cancelled') {
+            return ['ok' => false, 'message' => 'คำขอนี้ถูกยกเลิกไปแล้ว'];
+        }
+        $cancelReason = trim($reason) !== ''
+            ? trim($reason)
+            : ('ยกเลิกโดย' . ($isOwner ? 'ผู้ขอจอง' : 'ผู้พิจารณา/ผู้ดูแล') . ' (' . ($actorUser['full_name'] ?? '') . ')');
+        $upd = $pdo->prepare("UPDATE bookings SET status = 'cancelled', rejection_reason = :r WHERE id = :id");
+        $upd->execute([':r' => mb_substr($cancelReason, 0, 500), ':id' => $bookingId]);
+        return ['ok' => true, 'message' => 'ยกเลิกคำขอ "' . $row['reference_code'] . '" เรียบร้อยแล้ว'];
+    }
+}
+
+if (!function_exists('delete_booking_record')) {
+    /**
+     * Permanently delete a booking queue record from the database.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser): array
+    {
+        if ($bookingId <= 0) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานที่ต้องการลบ'];
+        }
+        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $bookingId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานนี้ในระบบ'];
+        }
+        $uid = (int)$actorUser['id'];
+        $isOwner = ((int)$row['requester_id'] === $uid);
+        $isPrivileged = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
+        if (!$isPrivileged && !($isOwner && (string)$row['status'] !== 'approved')) {
+            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ลบข้อมูลคิวงานนี้'];
+        }
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM approval_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            $pdo->prepare('DELETE FROM notification_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            if (function_exists('ensure_saved_memos_schema')) {
+                ensure_saved_memos_schema($pdo);
+                $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            }
+            $pdo->prepare('DELETE FROM bookings WHERE id = :id')->execute([':id' => $bookingId]);
+            $pdo->commit();
+            return ['ok' => true, 'message' => 'ลบข้อมูลคิวงาน "' . $row['reference_code'] . '" ออกจากฐานข้อมูลเรียบร้อยแล้ว'];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'message' => 'ไม่สามารถลบข้อมูลคิวงานได้'];
         }
     }
 }
@@ -621,6 +937,108 @@ if (!function_exists('ensure_saved_memos_schema')) {
             );
         } catch (Throwable $e) {
             // Non-fatal if DB account lacks DDL privileges
+        }
+    }
+}
+
+if (!function_exists('ensure_booking_cancelled_schema')) {
+    /**
+     * Ensure bookings.status ENUM includes 'cancelled'.
+     */
+    function ensure_booking_cancelled_schema(PDO $pdo): void
+    {
+        static $checked = false;
+        if ($checked) {
+            return;
+        }
+        $checked = true;
+        try {
+            $col = $pdo->query("SHOW COLUMNS FROM bookings LIKE 'status'")->fetch();
+            $type = (string)($col['Type'] ?? '');
+            if ($type !== '' && stripos($type, "'cancelled'") === false) {
+                $pdo->exec("ALTER TABLE bookings MODIFY COLUMN status ENUM('pending_head', 'pending_vice', 'pending_director', 'approved', 'rejected', 'cancelled') NOT NULL DEFAULT 'pending_head'");
+            }
+        } catch (Throwable $e) {
+            // Non-fatal if DB account lacks DDL privileges
+        }
+    }
+}
+
+if (!function_exists('cancel_booking_record')) {
+    /**
+     * Cancel a booking by its requester or an approver/admin.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    function cancel_booking_record(PDO $pdo, int $bookingId, array $actorUser, string $reason = ''): array
+    {
+        if ($bookingId <= 0) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคำขอที่ต้องการยกเลิก'];
+        }
+        ensure_booking_cancelled_schema($pdo);
+        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $bookingId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return ['ok' => false, 'message' => 'ไม่พบคำขอจองนี้ในระบบ'];
+        }
+        $uid = (int)$actorUser['id'];
+        $isOwner = ((int)$row['requester_id'] === $uid);
+        $isApprover = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
+        if (!$isOwner && !$isApprover) {
+            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ยกเลิกคำขอจองนี้'];
+        }
+        if ((string)$row['status'] === 'cancelled') {
+            return ['ok' => false, 'message' => 'คำขอนี้ถูกยกเลิกไปแล้ว'];
+        }
+        $cancelReason = trim($reason) !== ''
+            ? trim($reason)
+            : ('ยกเลิกโดย' . ($isOwner ? 'ผู้ขอจอง' : 'ผู้พิจารณา/ผู้ดูแล') . ' (' . ($actorUser['full_name'] ?? '') . ')');
+        $upd = $pdo->prepare("UPDATE bookings SET status = 'cancelled', rejection_reason = :r WHERE id = :id");
+        $upd->execute([':r' => mb_substr($cancelReason, 0, 500), ':id' => $bookingId]);
+        return ['ok' => true, 'message' => 'ยกเลิกคำขอ "' . $row['reference_code'] . '" เรียบร้อยแล้ว'];
+    }
+}
+
+if (!function_exists('delete_booking_record')) {
+    /**
+     * Permanently delete a booking queue record from the database.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser): array
+    {
+        if ($bookingId <= 0) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานที่ต้องการลบ'];
+        }
+        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $bookingId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานนี้ในระบบ'];
+        }
+        $uid = (int)$actorUser['id'];
+        $isOwner = ((int)$row['requester_id'] === $uid);
+        $isPrivileged = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
+        if (!$isPrivileged && !($isOwner && (string)$row['status'] !== 'approved')) {
+            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ลบข้อมูลคิวงานนี้'];
+        }
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM approval_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            $pdo->prepare('DELETE FROM notification_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            if (function_exists('ensure_saved_memos_schema')) {
+                ensure_saved_memos_schema($pdo);
+                $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            }
+            $pdo->prepare('DELETE FROM bookings WHERE id = :id')->execute([':id' => $bookingId]);
+            $pdo->commit();
+            return ['ok' => true, 'message' => 'ลบข้อมูลคิวงาน "' . $row['reference_code'] . '" ออกจากฐานข้อมูลเรียบร้อยแล้ว'];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'message' => 'ไม่สามารถลบข้อมูลคิวงานได้'];
         }
     }
 }

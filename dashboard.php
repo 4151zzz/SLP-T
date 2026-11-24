@@ -242,12 +242,21 @@ require __DIR__ . '/includes/layout_header.php';
             </form>
 
             <div class="d-flex flex-wrap align-items-center gap-1">
-                <a href="<?= e(app_url('/export_csv.php?type=bookings&month=' . urlencode($month))) ?>"
+                <a href="<?= e(app_url('/export_csv.php?type=bookings_room&month=' . urlencode($month))) ?>"
+                   class="btn btn-sm btn-soft-primary d-inline-flex align-items-center gap-1 rounded-3 px-2 fw-semibold text-nowrap"
+                   style="min-height: 34px;"
+                   data-export="bookings-room"
+                   data-testid="btn-export-room-csv">
+                    <i class="bi bi-house-door"></i>
+                    <span>CSV จองห้อง</span>
+                </a>
+                <a href="<?= e(app_url('/export_csv.php?type=bookings_vehicle&month=' . urlencode($month))) ?>"
                    class="btn btn-sm btn-soft-success d-inline-flex align-items-center gap-1 rounded-3 px-2 fw-semibold text-nowrap"
                    style="min-height: 34px;"
-                   data-export="bookings">
-                    <i class="bi bi-file-earmark-spreadsheet"></i>
-                    <span>CSV เดือนนี้</span>
+                   data-export="bookings-vehicle"
+                   data-testid="btn-export-vehicle-csv">
+                    <i class="bi bi-car-front"></i>
+                    <span>CSV จองรถ</span>
                 </a>
                 <a href="<?= e(app_url('/export_csv.php?type=bookings&month=all')) ?>"
                    class="btn btn-sm btn-success d-inline-flex align-items-center gap-1 rounded-3 px-2 fw-semibold text-nowrap"
@@ -255,7 +264,7 @@ require __DIR__ . '/includes/layout_header.php';
                    data-export="bookings-all"
                    data-testid="btn-export-all-bookings">
                     <i class="bi bi-download"></i>
-                    <span>CSV การจองทั้งหมด</span>
+                    <span>CSV จองทั้งหมด</span>
                 </a>
                 <a href="<?= e(app_url('/export_csv.php?type=maintenance&month=' . urlencode($month))) ?>"
                    class="btn btn-sm btn-soft-secondary d-inline-flex align-items-center gap-1 rounded-3 px-2 fw-semibold text-nowrap"
@@ -439,7 +448,16 @@ require __DIR__ . '/includes/layout_header.php';
                                                 title="ดูเร็ว">
                                             <i class="bi bi-eye"></i>
                                         </button>
-                                        <a href="<?= e(app_url('/booking_detail.php?id=' . (int)$pq['id'])) ?>" class="btn btn-sm btn-soft-primary rounded-3">ดู</a>
+                                        <a href="<?= e(app_url('/booking_detail.php?id=' . (int)$pq['id'])) ?>" class="btn btn-sm btn-soft-primary rounded-3 me-1">ดู</a>
+                                        <form method="post" action="<?= e(app_url('/approvals.php')) ?>" class="d-inline" data-confirm="ต้องการลบข้อมูลคิวงาน &quot;<?= e($pq['reference_code']) ?>&quot; ออกจากฐานข้อมูลใช่หรือไม่?" data-confirm-danger="1">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="action" value="delete_booking">
+                                            <input type="hidden" name="booking_id" value="<?= (int)$pq['id'] ?>">
+                                            <input type="hidden" name="return_to" value="dashboard">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-3" title="ลบออกจากฐานข้อมูล" data-testid="btn-dash-delete-<?= (int)$pq['id'] ?>">
+                                                <i class="bi bi-trash3"></i>
+                                            </button>
+                                        </form>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

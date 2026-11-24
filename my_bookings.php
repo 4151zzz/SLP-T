@@ -11,6 +11,21 @@ $pageTitle = 'รายการคำขอของฉัน';
 $activeNav = 'my_bookings';
 $isInternal = is_internal($user);
 
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    verify_csrf();
+    $postAction = trim((string)($_POST['action'] ?? ''));
+    $targetBid = (int)($_POST['booking_id'] ?? 0);
+    if ($postAction === 'cancel_booking') {
+        $res = cancel_booking_record($pdo, $targetBid, $user, trim((string)($_POST['reason'] ?? '')));
+        flash($res['ok'] ? 'success' : 'danger', $res['message']);
+        redirect(app_url('/my_bookings.php'));
+    } elseif ($postAction === 'delete_booking') {
+        $res = delete_booking_record($pdo, $targetBid, $user);
+        flash($res['ok'] ? 'success' : 'danger', $res['message']);
+        redirect(app_url('/my_bookings.php'));
+    }
+}
+
 $stmt = $pdo->prepare(
     'SELECT b.*, r.room_code, r.name AS room_name,
             v.vehicle_code, v.brand_model AS vehicle_name, v.plate_number,
@@ -177,6 +192,26 @@ require __DIR__ . '/includes/layout_header.php';
                            class="btn btn-sm btn-soft-primary rounded-3 px-3 fw-semibold">
                             รายละเอียด
                         </a>
+                        <?php if ($statusCode !== 'cancelled' && $statusCode !== 'rejected'): ?>
+                            <form method="post" action="<?= e(app_url('/my_bookings.php')) ?>" class="d-inline" data-confirm="ต้องการยกเลิกคำขอ &quot;<?= e($b['reference_code']) ?>&quot; ใช่หรือไม่?">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="action" value="cancel_booking">
+                                <input type="hidden" name="booking_id" value="<?= $bid ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-warning text-dark rounded-3 px-2 fw-semibold" data-testid="btn-cancel-booking-<?= $bid ?>">
+                                    <i class="bi bi-x-circle me-1"></i>ยกเลิก
+                                </button>
+                            </form>
+                        <?php endif; ?>
+                        <?php if ($statusCode !== 'approved'): ?>
+                            <form method="post" action="<?= e(app_url('/my_bookings.php')) ?>" class="d-inline" data-confirm="ต้องการลบข้อมูลคำขอ &quot;<?= e($b['reference_code']) ?>&quot; ออกจากฐานข้อมูลอย่างถาวรใช่หรือไม่?" data-confirm-danger="1">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="action" value="delete_booking">
+                                <input type="hidden" name="booking_id" value="<?= $bid ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-danger rounded-3 px-2" title="ลบออกจากฐานข้อมูล" data-testid="btn-delete-booking-<?= $bid ?>">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </form>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

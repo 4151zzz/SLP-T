@@ -141,6 +141,9 @@ if (!defined('BOOKING_STATUS_APPROVED')) {
 if (!defined('BOOKING_STATUS_REJECTED')) {
     define('BOOKING_STATUS_REJECTED', 'rejected');
 }
+if (!defined('BOOKING_STATUS_CANCELLED')) {
+    define('BOOKING_STATUS_CANCELLED', 'cancelled');
+}
 if (!defined('BOOKING_STATUS_LABELS')) {
     define('BOOKING_STATUS_LABELS', [
         BOOKING_STATUS_PENDING_HEAD     => ['label' => 'รอหัวหน้างาน',     'badge' => 'warning text-dark'],
@@ -148,6 +151,7 @@ if (!defined('BOOKING_STATUS_LABELS')) {
         BOOKING_STATUS_PENDING_DIRECTOR => ['label' => 'รอผู้อำนวยการ',   'badge' => 'primary'],
         BOOKING_STATUS_APPROVED         => ['label' => 'อนุมัติแล้ว',       'badge' => 'success'],
         BOOKING_STATUS_REJECTED         => ['label' => 'ไม่อนุมัติ',        'badge' => 'danger'],
+        BOOKING_STATUS_CANCELLED        => ['label' => 'ยกเลิกแล้ว',        'badge' => 'secondary'],
     ]);
 }
 
