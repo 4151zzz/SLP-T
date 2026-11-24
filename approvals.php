@@ -258,6 +258,11 @@ require __DIR__ . '/includes/layout_header.php';
             </p>
         </div>
         <div class="d-flex flex-wrap gap-2 flex-shrink-0">
+            <a href="<?= e(app_url('/export_csv.php?type=bookings&month=all')) ?>"
+               class="btn btn-soft-success fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3"
+               data-testid="btn-export-all-bookings">
+                <i class="bi bi-file-earmark-spreadsheet"></i> Export CSV การจองทั้งหมด
+            </a>
             <a href="<?= e(app_url('/dashboard.php')) ?>" class="btn btn-soft-primary fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3">
                 <i class="bi bi-speedometer2"></i> แดชบอร์ด
             </a>

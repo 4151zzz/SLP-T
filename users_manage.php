@@ -164,10 +164,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $newDepartment = trim((string)($_POST['department'] ?? ''));
         $newOrg = trim((string)($_POST['organization'] ?? ''));
         $newPhone = trim((string)($_POST['phone'] ?? ''));
+        $newEmail = strtolower(trim((string)($_POST['email'] ?? '')));
         $newPassword = (string)($_POST['new_password'] ?? '');
 
         if ($targetId <= 0 || $newFullName === '' || !array_key_exists($newRole, $allRoles)) {
             flash('danger', 'ข้อมูลที่แก้ไขไม่ถูกต้อง');
+            redirect(app_url('/users_manage.php'));
+        }
+        if ($newEmail === '' || filter_var($newEmail, FILTER_VALIDATE_EMAIL) === false) {
+            flash('danger', 'กรุณากรอกอีเมล / Gmail ให้ถูกต้อง');
+            redirect(app_url('/users_manage.php'));
+        }
+        $dupEmailStmt = $pdo->prepare('SELECT id FROM users WHERE email = :e AND id <> :id LIMIT 1');
+        $dupEmailStmt->execute([':e' => $newEmail, ':id' => $targetId]);
+        if ($dupEmailStmt->fetch()) {
+            flash('danger', 'อีเมล "' . $newEmail . '" มีอยู่ในระบบแล้ว');
             redirect(app_url('/users_manage.php'));
         }
         if ($targetId === (int)$user['id'] && $newRole !== ROLE_ADMIN) {
@@ -184,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtUpd = $pdo->prepare(
                 'UPDATE users
                  SET user_type = :ut, role = :r, full_name = :fn, position_title = :pt,
-                     department = :dp, organization = :org, phone = :ph, password_hash = :pw
+                     department = :dp, organization = :org, phone = :ph, email = :em, password_hash = :pw
                  WHERE id = :id'
             );
             $stmtUpd->execute([
@@ -195,6 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':dp'  => $newDepartment !== '' ? mb_substr($newDepartment, 0, 150) : null,
                 ':org' => $newOrg !== '' ? mb_substr($newOrg, 0, 200) : null,
                 ':ph'  => $newPhone !== '' ? mb_substr($newPhone, 0, 30) : null,
+                ':em'  => mb_substr($newEmail, 0, 150),
                 ':pw'  => password_hash($newPassword, PASSWORD_DEFAULT),
                 ':id'  => $targetId,
             ]);
@@ -202,7 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtUpd = $pdo->prepare(
                 'UPDATE users
                  SET user_type = :ut, role = :r, full_name = :fn, position_title = :pt,
-                     department = :dp, organization = :org, phone = :ph
+                     department = :dp, organization = :org, phone = :ph, email = :em
                  WHERE id = :id'
             );
             $stmtUpd->execute([
@@ -213,6 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':dp'  => $newDepartment !== '' ? mb_substr($newDepartment, 0, 150) : null,
                 ':org' => $newOrg !== '' ? mb_substr($newOrg, 0, 200) : null,
                 ':ph'  => $newPhone !== '' ? mb_substr($newPhone, 0, 30) : null,
+                ':em'  => mb_substr($newEmail, 0, 150),
                 ':id'  => $targetId,
             ]);
         }
@@ -506,6 +519,7 @@ require __DIR__ . '/includes/layout_header.php';
                                 data-department="<?= e((string)($uRow['department'] ?? '')) ?>"
                                 data-organization="<?= e((string)($uRow['organization'] ?? '')) ?>"
                                 data-phone="<?= e((string)($uRow['phone'] ?? '')) ?>"
+                                data-email="<?= e((string)($uRow['email'] ?? '')) ?>"
                                 data-is-self="<?= $isSelf ? '1' : '0' ?>">
                             <i class="bi bi-pencil-square me-1"></i>แก้ไข
                         </button>
@@ -671,6 +685,10 @@ require __DIR__ . '/includes/layout_header.php';
                         <input type="text" class="form-control touch-target" id="edit_full_name" name="full_name" required>
                     </div>
                     <div class="mb-3">
+                        <label for="edit_email" class="form-label fw-semibold small text-secondary">อีเมล / Gmail <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control touch-target" id="edit_email" name="email" placeholder="example@gmail.com" required data-testid="edit-user-email">
+                    </div>
+                    <div class="mb-3">
                         <label for="edit_role" class="form-label fw-semibold small text-secondary">บทบาทสิทธิ์ (Role)</label>
                         <select class="form-select touch-target" id="edit_role" name="role">
                             <?php foreach ($allRoles as $rKey => $rLabel): ?>
@@ -769,6 +787,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('edit_department').value = btn.dataset.department || '';
             document.getElementById('edit_organization').value = btn.dataset.organization || '';
             document.getElementById('edit_phone').value = btn.dataset.phone || '';
+            document.getElementById('edit_email').value = btn.dataset.email || '';
             document.getElementById('edit_new_password').value = '';
         });
     });

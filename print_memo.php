@@ -257,7 +257,15 @@ require __DIR__ . '/includes/layout_header.php';
     <!-- Requester signature -->
     <div class="row g-2 mx-0 justify-content-end mb-4 memo-signature-row">
         <div class="col-6 text-center">
-            <div class="mb-2">ลงชื่อ.....................................ผู้ขอ</div>
+            <?php if (!empty($booking['requester_signature']) && str_starts_with((string)$booking['requester_signature'], 'uploads/signatures/')): ?>
+                <div class="mb-1">
+                    <img src="<?= e(app_url('/download.php?type=requester_signature&id=' . (int)$booking['id'])) ?>"
+                         alt="ลายมือชื่อ <?= e($booking['requester_name']) ?>"
+                         class="memo-sig-img">
+                </div>
+            <?php else: ?>
+                <div class="mb-2">ลงชื่อ.....................................ผู้ขอ</div>
+            <?php endif; ?>
             <div>(<?= e($booking['requester_name']) ?>)</div>
             <div><?= e($booking['requester_position'] ?: $orgUnit) ?></div>
             <div>วันที่ <?= e(thai_date($booking['created_at'])) ?></div>

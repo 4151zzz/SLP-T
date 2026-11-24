@@ -526,3 +526,24 @@ if (!function_exists('set_qr_enabled')) {
         $stmt->execute([':val' => $enabled ? '1' : '0']);
     }
 }
+
+if (!function_exists('ensure_booking_signature_schema')) {
+    /**
+     * Ensure bookings.requester_signature column exists.
+     */
+    function ensure_booking_signature_schema(PDO $pdo): void
+    {
+        static $checked = false;
+        if ($checked) {
+            return;
+        }
+        $checked = true;
+        try {
+            if (!$pdo->query("SHOW COLUMNS FROM bookings LIKE 'requester_signature'")->fetch()) {
+                $pdo->exec('ALTER TABLE bookings ADD COLUMN requester_signature VARCHAR(255) NULL AFTER permission_letter_original_name');
+            }
+        } catch (Throwable $e) {
+            // Non-fatal if DB account lacks DDL privileges
+        }
+    }
+}

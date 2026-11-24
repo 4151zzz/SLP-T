@@ -153,6 +153,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($errors)) {
         try {
+            ensure_booking_signature_schema($pdo);
+            $requesterSigPath = save_signature_data_url($_POST['requester_signature_image'] ?? null, 'req_room');
             $refCode = generate_booking_reference($pdo);
             $eqJson = !empty($form['equipment']) ? json_encode($form['equipment'], JSON_UNESCAPED_UNICODE) : null;
 
@@ -161,13 +163,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     reference_code, booking_type, requester_id, requester_type,
                     room_id, vehicle_id, driver_id, title, purpose,
                     start_datetime, end_datetime, attendee_count, equipment_requested,
-                    permission_letter_path, permission_letter_original_name,
+                    permission_letter_path, permission_letter_original_name, requester_signature,
                     destination, passenger_count, current_step, status
                 ) VALUES (
                     :ref, "room", :req_id, :req_type,
                     :room_id, NULL, NULL, :title, :purpose,
                     :start_dt, :end_dt, :attendees, :eq_json,
-                    :perm_path, :perm_orig,
+                    :perm_path, :perm_orig, :req_sig,
                     NULL, NULL, 1, "pending_head"
                 )'
             );
@@ -184,6 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':eq_json'   => $eqJson,
                 ':perm_path' => $uploadedPath,
                 ':perm_orig' => $uploadedOrigName,
+                ':req_sig'   => $requesterSigPath,
             ]);
             $newBookingId = (int)$pdo->lastInsertId();
 
@@ -426,6 +429,24 @@ require __DIR__ . '/includes/layout_header.php';
                            data-testid="book-room-file">
                 </div>
 
+                <!-- Requester Signature Pad -->
+                <div class="mb-4">
+                    <div class="d-flex align-items-center justify-content-between mb-1">
+                        <label class="form-label fw-semibold small text-secondary mb-0">
+                            <i class="bi bi-pen me-1 text-primary"></i>ลงลายมือชื่อผู้ขอจอง
+                            <span class="badge text-bg-light border text-secondary ms-1" id="reqSigStatus">ยังไม่ได้เซ็น</span>
+                        </label>
+                        <button type="button" class="btn btn-sm btn-outline-secondary rounded-3 px-2" id="btnClearReqSig">
+                            <i class="bi bi-eraser me-1"></i>ล้างลายเซ็น
+                        </button>
+                    </div>
+                    <div class="border rounded-3 bg-white p-1" style="border-style: dashed !important; border-color: #94a3b8 !important;">
+                        <canvas id="reqSigCanvas" width="520" height="140" class="w-100 d-block" style="height: 140px; touch-action: none; cursor: crosshair;" data-testid="requester-sig-canvas"></canvas>
+                    </div>
+                    <input type="hidden" name="requester_signature_image" id="reqSigInput" value="">
+                    <div class="form-text small">ใช้นิ้วหรือเมาส์วาดลายมือชื่อในกรอบด้านบน เพื่อแนบในเอกสารบันทึกข้อความ</div>
+                </div>
+
                 <button type="submit" class="btn btn-primary-gradient w-100 touch-target fw-semibold rounded-3" data-testid="book-room-submit">
                     <i class="bi bi-send-check me-1"></i>
                     ส่งคำขอจองห้องประชุม
@@ -647,6 +668,73 @@ document.addEventListener('DOMContentLoaded', function () {
             syncRoomPreview(rid);
         });
     });
+
+    // Requester signature canvas
+    const sigCanvas = document.getElementById('reqSigCanvas');
+    const sigInput = document.getElementById('reqSigInput');
+    const sigStatus = document.getElementById('reqSigStatus');
+    const btnClearSig = document.getElementById('btnClearReqSig');
+    if (sigCanvas && sigInput) {
+        const ctx = sigCanvas.getContext('2d');
+        let drawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        function getPos(ev) {
+            const r = sigCanvas.getBoundingClientRect();
+            const sx = r.width > 0 ? (sigCanvas.width / r.width) : 1;
+            const sy = r.height > 0 ? (sigCanvas.height / r.height) : 1;
+            return { x: (ev.clientX - r.left) * sx, y: (ev.clientY - r.top) * sy };
+        }
+        sigCanvas.addEventListener('pointerdown', function (ev) {
+            if (ev.button !== 0 && ev.pointerType === 'mouse') return;
+            drawing = true;
+            const p = getPos(ev);
+            lastX = p.x; lastY = p.y;
+            ctx.beginPath(); ctx.moveTo(lastX, lastY);
+            sigCanvas.setPointerCapture(ev.pointerId);
+        });
+        sigCanvas.addEventListener('pointermove', function (ev) {
+            if (!drawing) return;
+            const p = getPos(ev);
+            ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#0f172a';
+            ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
+            lastX = p.x; lastY = p.y;
+            sigCanvas.dataset.hasDrawn = '1';
+            if (sigStatus) {
+                sigStatus.textContent = 'เซ็นแล้ว';
+                sigStatus.className = 'badge text-bg-success ms-1';
+            }
+        });
+        function stopSig(ev) {
+            if (!drawing) return;
+            drawing = false;
+            try { sigCanvas.releasePointerCapture(ev.pointerId); } catch (e) {}
+            if (sigCanvas.dataset.hasDrawn === '1') {
+                sigInput.value = sigCanvas.toDataURL('image/png');
+            }
+        }
+        sigCanvas.addEventListener('pointerup', stopSig);
+        sigCanvas.addEventListener('pointercancel', stopSig);
+        if (btnClearSig) {
+            btnClearSig.addEventListener('click', function () {
+                ctx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+                delete sigCanvas.dataset.hasDrawn;
+                sigInput.value = '';
+                if (sigStatus) {
+                    sigStatus.textContent = 'ยังไม่ได้เซ็น';
+                    sigStatus.className = 'badge text-bg-light border text-secondary ms-1';
+                }
+            });
+        }
+        const formEl = sigCanvas.closest('form');
+        if (formEl) {
+            formEl.addEventListener('submit', function () {
+                if (sigCanvas.dataset.hasDrawn === '1') {
+                    sigInput.value = sigCanvas.toDataURL('image/png');
+                }
+            });
+        }
+    }
 });
 </script>
 <?php require __DIR__ . '/includes/layout_footer.php'; ?>

@@ -85,6 +85,24 @@ if ($type === 'permission' || $type === 'permission_letter') {
         exit('404 Signature image not attached');
     }
     $relativePath = $sigPath;
+} elseif ($type === 'requester_signature') {
+    $stmt = $pdo->prepare('SELECT requester_id, requester_signature FROM bookings WHERE id = :id LIMIT 1');
+    $stmt->execute([':id' => $id]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        http_response_code(404);
+        exit('404 Not Found');
+    }
+    if ((int)$row['requester_id'] !== (int)$user['id'] && !$isPrivileged) {
+        http_response_code(403);
+        exit('403 Forbidden');
+    }
+    $sigPath = (string)($row['requester_signature'] ?? '');
+    if (!str_starts_with($sigPath, 'uploads/signatures/')) {
+        http_response_code(404);
+        exit('404 Signature image not attached');
+    }
+    $relativePath = $sigPath;
 } else {
     http_response_code(400);
     header('Content-Type: text/plain; charset=UTF-8');

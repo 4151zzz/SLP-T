@@ -165,3 +165,34 @@ if (!function_exists('delete_uploaded_file')) {
         }
     }
 }
+
+if (!function_exists('save_signature_data_url')) {
+    /**
+     * Decode a base64 PNG data URL from a signature canvas and store it in uploads/signatures/.
+     */
+    function save_signature_data_url(?string $dataUrl, string $prefix = 'req_sig'): ?string
+    {
+        $raw = trim((string)($dataUrl ?? ''));
+        if ($raw === '' || preg_match('#^data:image/png;base64,([A-Za-z0-9+/=]+)$#', $raw, $m) !== 1) {
+            return null;
+        }
+        $bin = base64_decode($m[1], true);
+        if ($bin === false || strlen($bin) < 64 || strlen($bin) > 524288) {
+            return null;
+        }
+        if (substr($bin, 0, 8) !== "\x89PNG\r\n\x1a\n") {
+            return null;
+        }
+        $dir = UPLOAD_ROOT . DIRECTORY_SEPARATOR . 'signatures';
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
+            return null;
+        }
+        $safePrefix = preg_replace('/[^a-zA-Z0-9_-]/', '', $prefix) ?: 'sig';
+        $filename = $safePrefix . '_' . date('YmdHis') . '_' . bin2hex(random_bytes(6)) . '.png';
+        $dest = $dir . DIRECTORY_SEPARATOR . $filename;
+        if (@file_put_contents($dest, $bin) === false) {
+            return null;
+        }
+        return 'uploads/signatures/' . $filename;
+    }
+}

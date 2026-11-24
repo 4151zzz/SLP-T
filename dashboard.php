@@ -214,10 +214,12 @@ HTML;
 require __DIR__ . '/includes/layout_header.php';
 ?>
 <div class="welcome-card p-3 p-md-4 mb-4">
-    <div class="d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3">
-        <div class="min-w-0">
-            <div class="small text-muted mb-1">
-                <i class="bi bi-speedometer2 me-1"></i>สรุปภาพรวมการบริหารทรัพยากร · เดือน <?= e($month) ?>
+    <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+        <div class="min-w-0 flex-grow-1">
+            <div class="d-inline-flex align-items-center gap-2 small text-primary fw-semibold mb-1">
+                <i class="bi bi-speedometer2"></i>
+                <span>สรุปภาพรวมการบริหารทรัพยากร</span>
+                <span class="badge rounded-pill text-bg-primary bg-opacity-10 text-primary border border-primary-subtle">เดือน <?= e($month) ?></span>
             </div>
             <h1 class="h4 fw-bold text-dark mb-1" data-testid="dashboard-heading">แดชบอร์ดผู้บริหาร</h1>
             <p class="small text-muted mb-0">
@@ -225,31 +227,44 @@ require __DIR__ . '/includes/layout_header.php';
             </p>
         </div>
 
-        <div class="d-flex flex-wrap align-items-center gap-2 flex-shrink-0">
-            <form method="get" action="<?= e(app_url('/dashboard.php')) ?>" class="d-flex align-items-center gap-2 flex-shrink-0">
+        <div class="bg-light border rounded-4 p-2 d-flex flex-column gap-2 flex-shrink-0">
+            <form method="get" action="<?= e(app_url('/dashboard.php')) ?>" class="d-flex align-items-center gap-2">
                 <label class="visually-hidden" for="monthFilter">เลือกเดือน</label>
                 <input type="month"
-                       class="form-control w-auto touch-target rounded-3"
+                       class="form-control form-control-sm flex-grow-1 rounded-3"
+                       style="min-width: 140px; min-height: 38px;"
                        id="monthFilter"
                        name="month"
                        value="<?= e($month) ?>">
-                <button type="submit" class="btn btn-primary-gradient touch-target rounded-3 px-3 fw-semibold text-nowrap flex-shrink-0">
+                <button type="submit" class="btn btn-sm btn-primary-gradient rounded-3 px-3 fw-semibold text-nowrap flex-shrink-0" style="min-height: 38px;">
                     <i class="bi bi-funnel-fill me-1"></i>กรองเดือน
                 </button>
             </form>
 
-            <a href="<?= e(app_url('/export_csv.php?type=bookings&month=' . urlencode($month))) ?>"
-               class="btn btn-soft-success touch-target d-inline-flex align-items-center gap-1 rounded-3 px-3 fw-semibold text-nowrap"
-               data-export="bookings">
-                <i class="bi bi-file-earmark-spreadsheet"></i>
-                <span>CSV การจอง</span>
-            </a>
-            <a href="<?= e(app_url('/export_csv.php?type=maintenance&month=' . urlencode($month))) ?>"
-               class="btn btn-soft-secondary touch-target d-inline-flex align-items-center gap-1 rounded-3 px-3 fw-semibold text-nowrap"
-               data-export="maintenance">
-                <i class="bi bi-file-earmark-spreadsheet"></i>
-                <span>CSV งานซ่อม</span>
-            </a>
+            <div class="d-flex flex-wrap align-items-center gap-1">
+                <a href="<?= e(app_url('/export_csv.php?type=bookings&month=' . urlencode($month))) ?>"
+                   class="btn btn-sm btn-soft-success d-inline-flex align-items-center gap-1 rounded-3 px-2 fw-semibold text-nowrap"
+                   style="min-height: 34px;"
+                   data-export="bookings">
+                    <i class="bi bi-file-earmark-spreadsheet"></i>
+                    <span>CSV เดือนนี้</span>
+                </a>
+                <a href="<?= e(app_url('/export_csv.php?type=bookings&month=all')) ?>"
+                   class="btn btn-sm btn-success d-inline-flex align-items-center gap-1 rounded-3 px-2 fw-semibold text-nowrap"
+                   style="min-height: 34px;"
+                   data-export="bookings-all"
+                   data-testid="btn-export-all-bookings">
+                    <i class="bi bi-download"></i>
+                    <span>CSV การจองทั้งหมด</span>
+                </a>
+                <a href="<?= e(app_url('/export_csv.php?type=maintenance&month=' . urlencode($month))) ?>"
+                   class="btn btn-sm btn-soft-secondary d-inline-flex align-items-center gap-1 rounded-3 px-2 fw-semibold text-nowrap"
+                   style="min-height: 34px;"
+                   data-export="maintenance">
+                    <i class="bi bi-file-earmark-spreadsheet"></i>
+                    <span>CSV งานซ่อม</span>
+                </a>
+            </div>
         </div>
     </div>
     <?php if ($monthWarning !== null): ?>

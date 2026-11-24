@@ -125,6 +125,7 @@ CREATE TABLE bookings (
     equipment_requested JSON NULL,
     permission_letter_path VARCHAR(255) NULL,
     permission_letter_original_name VARCHAR(255) NULL,
+    requester_signature VARCHAR(255) NULL,
     destination VARCHAR(255) NULL,
     passenger_count INT UNSIGNED NULL,
     current_step TINYINT UNSIGNED NOT NULL DEFAULT 1,

@@ -14,8 +14,11 @@ if (!in_array($type, ['bookings', 'maintenance'], true)) {
 }
 
 $monthRaw = trim((string)($_GET['month'] ?? ''));
+$exportAll = ($monthRaw === 'all');
 if ($monthRaw === '') {
     $month = date('Y-m');
+} elseif ($exportAll) {
+    $month = 'all';
 } elseif (preg_match('/^(\d{4})-(0[1-9]|1[0-2])$/', $monthRaw) === 1) {
     $month = $monthRaw;
 } else {
@@ -54,19 +57,20 @@ if ($type === 'bookings') {
         'เหตุผลไม่อนุมัติ',
     ];
 
-    $stmt = $pdo->prepare(
-        "SELECT b.*,
+    $sql = "SELECT b.*,
                 u.full_name AS requester_name, u.department AS requester_dept, u.organization AS requester_org,
                 r.room_code, r.name AS room_name,
                 v.vehicle_code, v.plate_number
          FROM bookings b
          INNER JOIN users u ON u.id = b.requester_id
          LEFT JOIN rooms r ON r.id = b.room_id
-         LEFT JOIN vehicles v ON v.id = b.vehicle_id
-         WHERE DATE_FORMAT(b.start_datetime, '%Y-%m') = :month
-         ORDER BY b.id ASC"
-    );
-    $stmt->execute([':month' => $month]);
+         LEFT JOIN vehicles v ON v.id = b.vehicle_id";
+    if (!$exportAll) {
+        $sql .= " WHERE DATE_FORMAT(b.start_datetime, '%Y-%m') = :month";
+    }
+    $sql .= " ORDER BY b.id ASC";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($exportAll ? [] : [':month' => $month]);
     $statusLabels = defined('BOOKING_STATUS_LABELS') ? BOOKING_STATUS_LABELS : [];
 
     foreach ($stmt->fetchAll() as $b) {
@@ -114,17 +118,18 @@ if ($type === 'bookings') {
         'วันที่เสร็จสิ้น',
     ];
 
-    $stmt = $pdo->prepare(
-        "SELECT m.*,
+    $mSql = "SELECT m.*,
                 u.full_name AS reporter_name,
                 s.full_name AS staff_name
          FROM maintenance_requests m
          INNER JOIN users u ON u.id = m.reporter_id
-         LEFT JOIN users s ON s.id = m.assigned_staff_id
-         WHERE DATE_FORMAT(m.reported_at, '%Y-%m') = :month
-         ORDER BY m.id ASC"
-    );
-    $stmt->execute([':month' => $month]);
+         LEFT JOIN users s ON s.id = m.assigned_staff_id";
+    if (!$exportAll) {
+        $mSql .= " WHERE DATE_FORMAT(m.reported_at, '%Y-%m') = :month";
+    }
+    $mSql .= " ORDER BY m.id ASC";
+    $stmt = $pdo->prepare($mSql);
+    $stmt->execute($exportAll ? [] : [':month' => $month]);
 
     foreach ($stmt->fetchAll() as $m) {
         $rowsToWrite[] = [

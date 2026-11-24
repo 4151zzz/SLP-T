@@ -38,10 +38,84 @@ $extraHead = '<meta name="csrf-token" content="' . e($csrfToken) . '">' . PHP_EO
         }
         .fc .fc-daygrid-event,
         .fc .fc-timegrid-event {
-            border-radius: 0.4rem;
-            padding: 1px 4px;
+            border-radius: 0.45rem;
+            padding: 3px 6px;
             font-size: 0.8rem;
+            font-weight: 700;
+            color: #ffffff !important;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.22);
+            border-width: 1px !important;
             cursor: pointer;
+        }
+        .fc .fc-daygrid-event .fc-event-main,
+        .fc .fc-daygrid-event .fc-event-title,
+        .fc .fc-daygrid-event .fc-event-time {
+            color: #ffffff !important;
+        }
+        .fc-theme-standard .fc-scrollgrid {
+            border: 1px solid #94a3b8 !important;
+            border-radius: 0.75rem;
+            overflow: hidden;
+        }
+        .fc-theme-standard td,
+        .fc-theme-standard th {
+            border: 1px solid #cbd5e1 !important;
+        }
+        .fc .fc-col-header-cell {
+            font-weight: 700;
+            padding: 0.5rem 0;
+        }
+        .fc .fc-daygrid-day-frame {
+            min-height: 108px;
+            background-image:
+                linear-gradient(to right, rgba(148, 163, 184, 0.18) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(148, 163, 184, 0.18) 1px, transparent 1px);
+            background-size: 22px 22px;
+        }
+        /* Soft-rich day-of-week colors */
+        .fc .fc-col-header-cell.fc-day-sun { background-color: #fecdd3 !important; }
+        .fc .fc-col-header-cell.fc-day-sun a { color: #9f1239 !important; }
+        .fc .fc-daygrid-day.fc-day-sun { background-color: #ffe4e6 !important; }
+
+        .fc .fc-col-header-cell.fc-day-mon { background-color: #fde68a !important; }
+        .fc .fc-col-header-cell.fc-day-mon a { color: #92400e !important; }
+        .fc .fc-daygrid-day.fc-day-mon { background-color: #fef3c7 !important; }
+
+        .fc .fc-col-header-cell.fc-day-tue { background-color: #fbcfe8 !important; }
+        .fc .fc-col-header-cell.fc-day-tue a { color: #9d174d !important; }
+        .fc .fc-daygrid-day.fc-day-tue { background-color: #fce7f3 !important; }
+
+        .fc .fc-col-header-cell.fc-day-wed { background-color: #bbf7d0 !important; }
+        .fc .fc-col-header-cell.fc-day-wed a { color: #166534 !important; }
+        .fc .fc-daygrid-day.fc-day-wed { background-color: #dcfce7 !important; }
+
+        .fc .fc-col-header-cell.fc-day-thu { background-color: #fed7aa !important; }
+        .fc .fc-col-header-cell.fc-day-thu a { color: #9a3412 !important; }
+        .fc .fc-daygrid-day.fc-day-thu { background-color: #ffedd5 !important; }
+
+        .fc .fc-col-header-cell.fc-day-fri { background-color: #bfdbfe !important; }
+        .fc .fc-col-header-cell.fc-day-fri a { color: #1e40af !important; }
+        .fc .fc-daygrid-day.fc-day-fri { background-color: #dbeafe !important; }
+
+        .fc .fc-col-header-cell.fc-day-sat { background-color: #e9d5ff !important; }
+        .fc .fc-col-header-cell.fc-day-sat a { color: #6b21a8 !important; }
+        .fc .fc-daygrid-day.fc-day-sat { background-color: #f3e8ff !important; }
+
+        .fc .fc-daygrid-event.fc-event-room {
+            background-color: #1d4ed8 !important;
+            border-color: #1e40af !important;
+        }
+        .fc .fc-daygrid-event.fc-event-vehicle {
+            background-color: #059669 !important;
+            border-color: #047857 !important;
+        }
+        .fc .fc-daygrid-event.fc-event-org {
+            background-color: #6d28d9 !important;
+            border-color: #5b21b6 !important;
+        }
+
+        .fc .fc-daygrid-day.fc-day-today {
+            box-shadow: inset 0 0 0 2px #2563eb;
         }
         @media (max-width: 575.98px) {
             .fc .fc-toolbar {
@@ -66,13 +140,13 @@ require __DIR__ . '/includes/layout_header.php';
             <h1 class="h4 fw-bold text-dark mb-2" data-testid="calendar-heading">ปฏิทินหลักและตารางการจอง</h1>
             <div class="d-flex flex-wrap align-items-center gap-3 small text-secondary">
                 <span class="d-inline-flex align-items-center gap-1">
-                    <span class="fc-legend-dot" style="background: #2563EB;"></span> ห้องประชุม
+                    <i class="bi bi-house-fill text-primary"></i> อาคาร / ห้องประชุม
                 </span>
                 <span class="d-inline-flex align-items-center gap-1">
-                    <span class="fc-legend-dot" style="background: #059669;"></span> ยานพาหนะ
+                    <i class="bi bi-car-front-fill text-success"></i> ยานพาหนะ
                 </span>
                 <span class="d-inline-flex align-items-center gap-1">
-                    <span class="fc-legend-dot" style="background: #7C3AED;"></span> กิจกรรมหน่วยงาน
+                    <i class="bi bi-calendar-event-fill" style="color: #7C3AED;"></i> กิจกรรมหน่วยงาน
                 </span>
             </div>
         </div>
@@ -88,6 +162,14 @@ require __DIR__ . '/includes/layout_header.php';
                    class="btn btn-soft-success fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3">
                     <i class="bi bi-truck"></i>
                     <span>จองยานพาหนะ</span>
+                </a>
+            <?php endif; ?>
+            <?php if (has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $user)): ?>
+                <a href="<?= e(app_url('/export_csv.php?type=bookings&month=all')) ?>"
+                   class="btn btn-outline-success fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3"
+                   data-testid="btn-export-all-bookings">
+                    <i class="bi bi-file-earmark-spreadsheet"></i>
+                    <span>Export CSV ทั้งหมด</span>
                 </a>
             <?php endif; ?>
             <?php if ($canManageEvents): ?>
@@ -186,7 +268,15 @@ require __DIR__ . '/includes/layout_header.php';
             </div>
             <div class="modal-body p-4" id="calEventModalBody"></div>
             <div class="modal-footer border-top bg-light px-4 py-3" id="calEventModalFooter">
-                <?php if ($canManageEvents): ?>
+                <?php if (has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $user)): ?>
+                <a href="<?= e(app_url('/export_csv.php?type=bookings&month=all')) ?>"
+                   class="btn btn-outline-success fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3"
+                   data-testid="btn-export-all-bookings">
+                    <i class="bi bi-file-earmark-spreadsheet"></i>
+                    <span>Export CSV ทั้งหมด</span>
+                </a>
+            <?php endif; ?>
+            <?php if ($canManageEvents): ?>
                     <button type="button" class="btn btn-outline-danger rounded-3 px-3 me-auto d-none" id="btnDeleteCalEvent">
                         <i class="bi bi-trash3 me-1"></i>ลบกิจกรรม
                     </button>
@@ -219,7 +309,15 @@ require __DIR__ . '/includes/layout_header.php';
                             <i class="bi bi-truck"></i> จองยานพาหนะช่วงนี้
                         </a>
                     <?php endif; ?>
-                    <?php if ($canManageEvents): ?>
+                    <?php if (has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $user)): ?>
+                <a href="<?= e(app_url('/export_csv.php?type=bookings&month=all')) ?>"
+                   class="btn btn-outline-success fw-semibold touch-target d-inline-flex align-items-center gap-2 rounded-3 px-3"
+                   data-testid="btn-export-all-bookings">
+                    <i class="bi bi-file-earmark-spreadsheet"></i>
+                    <span>Export CSV ทั้งหมด</span>
+                </a>
+            <?php endif; ?>
+            <?php if ($canManageEvents): ?>
                         <button type="button" id="slotAddEventBtn" class="btn btn-outline-primary touch-target d-flex align-items-center justify-content-center gap-2 rounded-3 fw-semibold">
                             <i class="bi bi-calendar-plus"></i> เพิ่มกิจกรรมหน่วยงาน
                         </button>
@@ -488,6 +586,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const calendar = new FullCalendar.Calendar(calendarEl, {
         locale: "th",
         initialView: "dayGridMonth",
+        eventDisplay: "block",
         height: "auto",
         navLinks: true,
         selectable: true,
@@ -544,6 +643,36 @@ document.addEventListener("DOMContentLoaded", function () {
                 currentSlotEnd = toInputLocal(info.end);
             }
             openSlotActionModal();
+        },
+        eventClassNames: function (arg) {
+            const p = arg.event.extendedProps || {};
+            if (p.source_type === "booking") {
+                return [p.booking_type === "room" ? "fc-event-room" : "fc-event-vehicle"];
+            }
+            return ["fc-event-org"];
+        },
+        eventContent: function (arg) {
+            const p = arg.event.extendedProps || {};
+            let iconClass = "bi-calendar-event-fill";
+            if (p.source_type === "booking") {
+                iconClass = (p.booking_type === "room") ? "bi-house-fill" : "bi-car-front-fill";
+            }
+            const wrap = document.createElement("div");
+            wrap.className = "d-flex align-items-center gap-1 text-truncate";
+            const icon = document.createElement("i");
+            icon.className = "bi " + iconClass + " flex-shrink-0";
+            wrap.appendChild(icon);
+            if (arg.timeText) {
+                const t = document.createElement("span");
+                t.className = "fw-semibold flex-shrink-0";
+                t.textContent = arg.timeText;
+                wrap.appendChild(t);
+            }
+            const title = document.createElement("span");
+            title.className = "text-truncate";
+            title.textContent = arg.event.title || "";
+            wrap.appendChild(title);
+            return { domNodes: [wrap] };
         },
         eventClick: function (info) {
             openEventDetailModal(info.event);
@@ -620,11 +749,11 @@ document.addEventListener("DOMContentLoaded", function () {
         const p = ev.extendedProps || {};
         if (p.source_type === "booking") {
             if (p.booking_type === "room") {
-                return "<span class=\"badge text-bg-primary\">ห้องประชุม</span>";
+                return "<span class=\"badge text-bg-primary\"><i class=\"bi bi-house-fill me-1\"></i>อาคาร/ห้องประชุม</span>";
             }
-            return "<span class=\"badge text-bg-success\">ยานพาหนะ</span>";
+            return "<span class=\"badge text-bg-success\"><i class=\"bi bi-car-front-fill me-1\"></i>ยานพาหนะ</span>";
         }
-        return "<span class=\"badge\" style=\"background:#7C3AED;\">กิจกรรมหน่วยงาน</span>";
+        return "<span class=\"badge\" style=\"background:#7C3AED;\"><i class=\"bi bi-calendar-event-fill me-1\"></i>กิจกรรมหน่วยงาน</span>";
     }
 
     function renderEventStatusBadge(ev) {
@@ -655,7 +784,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (events.length === 0) {
                 tableBox.innerHTML = "<div class=\"text-center text-muted py-5\"><i class=\"bi bi-table fs-1 d-block mb-2 opacity-50\"></i>ไม่พบรายการในช่วงเวลาที่เลือก</div>";
             } else {
-                let html = "<div class=\"table-responsive border rounded-3\"><table class=\"table table-hover align-middle mb-0\">";
+                let html = "<div class=\"table-responsive border rounded-3\"><table class=\"table table-bordered table-hover align-middle mb-0\">";
                 html += "<thead class=\"table-light\"><tr>";
                 html += "<th class=\"text-nowrap\">วันที่</th>";
                 html += "<th class=\"text-nowrap\">ช่วงเวลา</th>";
@@ -671,11 +800,14 @@ document.addEventListener("DOMContentLoaded", function () {
                     const ymd = String(ev.start || "").slice(0, 10);
                     const place = p.source_type === "booking" ? (p.resource_name || "-") : (p.location || "-");
                     const dotColor = ev.color || "#2563EB";
+                    const titleIcon = p.source_type === "booking"
+                        ? (p.booking_type === "room" ? "bi-house-fill text-primary" : "bi-car-front-fill text-success")
+                        : "bi-calendar-event-fill text-purple";
                     html += "<tr class=\"cal-table-row\" data-ev-idx=\"" + idx + "\">";
                     html += "<td class=\"text-nowrap fw-semibold small\">" + escapeHtml(formatThaiShortDate(ymd)) + "</td>";
                     html += "<td class=\"text-nowrap small\"><span class=\"cal-time-pill\"><i class=\"bi bi-clock\"></i> " + escapeHtml(formatEventTimePill(ev)) + "</span></td>";
                     html += "<td class=\"text-nowrap\">" + renderEventCategoryBadge(ev) + "</td>";
-                    html += "<td><div class=\"fw-semibold text-dark small d-flex align-items-center gap-2\"><span class=\"fc-legend-dot\" style=\"background:" + escapeHtml(dotColor) + ";\"></span><span>" + escapeHtml(ev.title) + "</span></div>"
+                    html += "<td><div class=\"fw-semibold text-dark small d-flex align-items-center gap-2\"><i class=\"bi " + titleIcon + "\"></i><span>" + escapeHtml(ev.title) + "</span></div>"
                          + (p.reference_code ? "<div class=\"small text-muted font-monospace\">" + escapeHtml(p.reference_code) + "</div>" : "") + "</td>";
                     html += "<td class=\"small text-secondary\">" + escapeHtml(place) + "</td>";
                     html += "<td class=\"text-nowrap\">" + renderEventStatusBadge(ev) + "</td>";
