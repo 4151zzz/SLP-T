@@ -47,6 +47,33 @@ $appDevelopers = defined('APP_DEVELOPERS') ? APP_DEVELOPERS : 'wunPiyapong & Cho
 <script src="<?= e(app_url('/assets/vendor/bootstrap/bootstrap.bundle.min.js')) ?>"></script>
 <script src="<?= e(app_url('/assets/vendor/sweetalert2/sweetalert2.all.min.js')) ?>"></script>
 <script src="<?= e(app_url('/assets/js/app.js')) ?>"></script>
+<script>
+(function () {
+    function syncThemeBtn(theme) {
+        var icon = document.getElementById('themeToggleIcon');
+        var label = document.getElementById('themeToggleLabel');
+        if (icon) {
+            icon.className = (theme === 'dark') ? 'bi bi-sun-fill text-warning' : 'bi bi-moon-stars-fill';
+        }
+        if (label) {
+            label.textContent = (theme === 'dark') ? 'โหมดสว่าง' : 'โหมดมืด';
+        }
+    }
+    var cur = document.documentElement.getAttribute('data-theme') || 'light';
+    syncThemeBtn(cur);
+    var btn = document.getElementById('themeToggleBtn');
+    if (btn) {
+        btn.addEventListener('click', function () {
+            var now = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+            var next = now === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            document.documentElement.setAttribute('data-bs-theme', next);
+            try { localStorage.setItem('slp_theme', next); } catch (e) {}
+            syncThemeBtn(next);
+        });
+    }
+})();
+</script>
 <?php if (!empty($extraScripts)): ?>
     <?= $extraScripts ?>
 <?php endif; ?>

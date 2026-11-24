@@ -37,6 +37,16 @@ $flashes = function_exists('get_flashes') ? get_flashes() : [];
     <link rel="stylesheet" href="<?= e(app_url('/assets/vendor/bootstrap/bootstrap.min.css')) ?>">
     <link rel="stylesheet" href="<?= e(app_url('/assets/vendor/bootstrap/bootstrap-icons.min.css')) ?>">
     <link rel="stylesheet" href="<?= e(app_url('/assets/css/app.css')) ?>">
+    <script>
+        (function () {
+            try {
+                var saved = localStorage.getItem('slp_theme');
+                var theme = (saved === 'dark' || saved === 'light') ? saved : 'light';
+                document.documentElement.setAttribute('data-theme', theme);
+                document.documentElement.setAttribute('data-bs-theme', theme);
+            } catch (e) {}
+        })();
+    </script>
     <?php if (!empty($extraHead)): ?>
         <?= $extraHead ?>
     <?php endif; ?>
@@ -71,6 +81,15 @@ $flashes = function_exists('get_flashes') ? get_flashes() : [];
         </div>
 
         <div class="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
+            <button type="button"
+                    id="themeToggleBtn"
+                    class="btn btn-light bg-white bg-opacity-10 text-white border-white border-opacity-25 btn-sm touch-target d-inline-flex align-items-center justify-content-center rounded-pill px-2 px-md-3"
+                    title="สลับโหมดสว่าง / โหมดมืด"
+                    aria-label="สลับโหมดสว่างหรือโหมดมืด"
+                    data-testid="theme-toggle">
+                <i class="bi bi-moon-stars-fill" id="themeToggleIcon"></i>
+                <span class="d-none d-xl-inline ms-1 small" id="themeToggleLabel">โหมดมืด</span>
+            </button>
             <?php if ($user !== null): ?>
                 <div class="d-none d-sm-flex align-items-center gap-2 text-white small navbar-user-pill" data-testid="user-badge">
                     <span class="navbar-user-avatar">

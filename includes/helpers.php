@@ -333,6 +333,15 @@ if (!function_exists('nav_items')) {
                 'badge'  => null,
             ],
             [
+                'key'    => 'print_report',
+                'href'   => app_url('/print_report.php'),
+                'label'  => 'พิมพ์รายงาน (PDF)',
+                'icon'   => 'bi-file-earmark-pdf',
+                'testid' => 'nav-print-report',
+                'roles'  => $executivesAdmin,
+                'badge'  => null,
+            ],
+            [
                 'key'    => 'users_manage',
                 'href'   => app_url('/users_manage.php'),
                 'label'  => 'จัดการผู้ใช้งาน',

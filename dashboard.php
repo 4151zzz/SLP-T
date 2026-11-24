@@ -264,6 +264,13 @@ require __DIR__ . '/includes/layout_header.php';
                     <i class="bi bi-file-earmark-spreadsheet"></i>
                     <span>CSV งานซ่อม</span>
                 </a>
+                <a href="<?= e(app_url('/print_report.php?period=month&month=' . urlencode($month))) ?>"
+                   class="btn btn-sm btn-primary-gradient d-inline-flex align-items-center gap-1 rounded-3 px-2 fw-semibold text-nowrap"
+                   style="min-height: 34px;"
+                   data-testid="btn-print-report">
+                    <i class="bi bi-file-earmark-pdf-fill"></i>
+                    <span>พิมพ์รีพอร์ต PDF</span>
+                </a>
             </div>
         </div>
     </div>
