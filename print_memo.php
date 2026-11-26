@@ -184,12 +184,259 @@ $actionThaiMap = [
     'assigned_vehicle' => 'จัดสรรยานพาหนะ/คนขับ',
 ];
 
-$pageTitle = 'บันทึกข้อความ ' . (string)$booking['reference_code'];
+$pageTitle = ($isRoom ? 'บันทึกข้อความ ' : 'ใบขออนุญาตใช้รถยนต์ส่วนกลาง ') . (string)$booking['reference_code'];
 $hideSidebar = true;
-$extraHead = '<link rel="stylesheet" href="' . e(app_url('/assets/css/print.css')) . '">';
+$extraHead = '<link rel="stylesheet" href="' . e(app_url('/assets/css/print.css')) . '">'
+    . '<style>
+        .memo-chk {
+            display: inline-block;
+            width: 13px;
+            height: 13px;
+            border: 1.2px solid #000;
+            text-align: center;
+            line-height: 11px;
+            font-size: 11px;
+            font-weight: 700;
+            vertical-align: -1px;
+            margin-right: 4px;
+            background: #fff;
+        }
+        .memo-sig-slot {
+            min-height: 46px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            margin-bottom: 2px;
+        }
+        .memo-sig-slot img.memo-sig-img {
+            max-height: 44px;
+            max-width: 150px;
+            margin: 0 auto;
+        }
+        .veh-permit-box {
+            border: 1.2px solid #000;
+            border-collapse: collapse;
+            width: 100%;
+        }
+        .veh-permit-box td {
+            border: 1.2px solid #000;
+            padding: 8px 12px;
+            vertical-align: top;
+        }
+    </style>';
 
 // Capture memo HTML body so we can both download (.doc) and save persistently into saved_memos
 ob_start();
+if (!$isRoom):
+    $thaiMonthsMap = [
+        1 => 'มกราคม', 2 => 'กุมภาพันธ์', 3 => 'มีนาคม', 4 => 'เมษายน',
+        5 => 'พฤษภาคม', 6 => 'มิถุนายน', 7 => 'กรกฎาคม', 8 => 'สิงหาคม',
+        9 => 'กันยายน', 10 => 'ตุลาคม', 11 => 'พฤศจิกายน', 12 => 'ธันวาคม',
+    ];
+    $splitThaiDt = static function (?string $dtStr) use ($thaiMonthsMap): array {
+        $ts = $dtStr ? strtotime($dtStr) : time();
+        if ($ts === false) { $ts = time(); }
+        return [
+            'd' => date('j', $ts),
+            'm' => $thaiMonthsMap[(int)date('n', $ts)] ?? '',
+            'y' => (string)((int)date('Y', $ts) + 543),
+            't' => date('H:i', $ts),
+            'short' => date('d / m / ', $ts) . ((int)date('Y', $ts) + 543),
+        ];
+    };
+    $reqDt = $splitThaiDt((string)$booking['created_at']);
+    $startDt = $splitThaiDt((string)$booking['start_datetime']);
+    $endDt = $splitThaiDt((string)$booking['end_datetime']);
+
+    $vMeta = json_decode((string)($booking['vehicle_form_meta'] ?? '{}'), true);
+    if (!is_array($vMeta)) { $vMeta = []; }
+    $posType = (string)($vMeta['position_type'] ?? ($booking['requester_position'] ?: 'ครู'));
+    $posOther = (string)($vMeta['position_other'] ?? '');
+    $purType = (string)($vMeta['purpose_type'] ?? 'ประชุม');
+    $purOther = (string)($vMeta['purpose_other'] ?? '');
+    $passMode = (string)($vMeta['passenger_mode'] ?? 'attached');
+    $passNames = (string)($vMeta['passenger_names'] ?? '');
+
+    $activeVehicles = $pdo->query("SELECT id, plate_number, vehicle_type, brand_model FROM vehicles ORDER BY id ASC")->fetchAll();
+    if (empty($activeVehicles)) {
+        $activeVehicles = [
+            ['id' => 0, 'plate_number' => 'บจ 2114 พิจิตร', 'vehicle_type' => 'รถกระบะ'],
+            ['id' => 0, 'plate_number' => 'กฌ 6092 พิจิตร', 'vehicle_type' => 'รถกระบะ 4 ประตู'],
+            ['id' => 0, 'plate_number' => 'นข 2101 พิจิตร', 'vehicle_type' => 'รถตู้'],
+            ['id' => 0, 'plate_number' => '40-0228 พิจิตร', 'vehicle_type' => 'รถ 6 ล้อ'],
+        ];
+    }
+    $chk = static fn (bool $on): string => '<span class="memo-chk">' . ($on ? '✓' : '&nbsp;') . '</span>';
+    $step1 = $logsByStep[1][0] ?? null;
+    $step2 = $logsByStep[2][0] ?? null;
+    $step3 = $logsByStep[3][0] ?? null;
+?>
+    <div class="text-center mb-2">
+        <div class="memo-title" style="font-size: 19pt;">ใบขออนุญาตใช้รถยนต์ส่วนกลาง</div>
+    </div>
+
+    <div class="d-flex justify-content-center align-items-start gap-4 mb-2" style="font-size: 14.5pt;">
+        <div class="fw-bold">หมายเลขทะเบียนรถ</div>
+        <div>
+            <?php foreach ($activeVehicles as $av):
+                $isSelVeh = ((int)($booking['vehicle_id'] ?? 0) > 0 && (int)$booking['vehicle_id'] === (int)$av['id'])
+                    || (!empty($booking['plate_number']) && trim((string)$booking['plate_number']) === trim((string)$av['plate_number']));
+            ?>
+                <div class="mb-0">
+                    <?= $chk($isSelVeh) ?>
+                    <span><?= e($av['plate_number']) ?></span>
+                    <span class="ms-2">(<?= e($av['vehicle_type'] ?: ($av['brand_model'] ?? 'รถราชการ')) ?>)</span>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <div class="text-end mb-2" style="font-size: 14.5pt;">
+        วันที่ <u>&nbsp;<?= e($reqDt['d']) ?>&nbsp;</u> เดือน <u>&nbsp;<?= e($reqDt['m']) ?>&nbsp;</u> พ.ศ. <u>&nbsp;<?= e($reqDt['y']) ?>&nbsp;</u>
+    </div>
+
+    <div class="mb-1" style="font-size: 14.5pt;">
+        <span class="fw-bold">เรียน</span> ผู้อำนวยการ<?= e($appOrgName) ?>
+    </div>
+
+    <div class="mb-1" style="font-size: 14.5pt; line-height: 1.55;">
+        <span class="ms-4">ข้าพเจ้า</span> <u>&nbsp;&nbsp;<?= e($booking['requester_name']) ?>&nbsp;&nbsp;</u>
+        ตำแหน่ง
+        <?= $chk(str_contains($posType, 'รองผู้อำนวยการ')) ?>รองผู้อำนวยการโรงเรียน
+        <br>
+        <?= $chk($posType === 'ครู') ?>ครู
+        <?= $chk($posType === 'พนักงานราชการ') ?>พนักงานราชการ
+        <?= $chk($posType === 'ลูกจ้างประจำ') ?>ลูกจ้างประจำ
+        <?= $chk($posType === 'ลูกจ้างชั่วคราว') ?>ลูกจ้างชั่วคราว
+        <?= $chk($posType === 'อื่นๆ' || (!in_array($posType, ['รองผู้อำนวยการโรงเรียน', 'ครู', 'พนักงานราชการ', 'ลูกจ้างประจำ', 'ลูกจ้างชั่วคราว'], true))) ?>อื่นๆ(ระบุ)
+        <u>&nbsp;<?= e($posOther !== '' ? $posOther : (!in_array($posType, ['รองผู้อำนวยการโรงเรียน', 'ครู', 'พนักงานราชการ', 'ลูกจ้างประจำ', 'ลูกจ้างชั่วคราว', 'อื่นๆ'], true) ? $posType : '....................')) ?>&nbsp;</u>
+    </div>
+
+    <div class="mb-1" style="font-size: 14.5pt; line-height: 1.55;">
+        มีความประสงค์ขออนุญาตใช้รถยนต์ส่วนกลางของโรงเรียน หมายเลขทะเบียนดังกล่าว เพื่อ
+        <?= $chk($purType === 'อบรม') ?>อบรม
+        <?= $chk($purType === 'ประชุม') ?>ประชุม
+        <br>
+        <?= $chk($purType === 'สัมมนา') ?>สัมมนา
+        <?= $chk($purType === 'อบรมเชิงปฏิบัติการ') ?>อบรมเชิงปฏิบัติการ
+        <?= $chk($purType === 'อื่นๆ') ?>อื่นๆ(ระบุ) <u>&nbsp;<?= e($purOther !== '' ? $purOther : $booking['title']) ?>&nbsp;</u>
+    </div>
+
+    <div class="mb-1" style="font-size: 14.5pt; line-height: 1.55;">
+        ณ (สถานที่) <u>&nbsp;&nbsp;<?= e($booking['destination'] ?: '-') ?>&nbsp;&nbsp;</u>
+        มีผู้โดยสารจำนวน <u>&nbsp;<?= (int)($booking['passenger_count'] ?? 0) ?>&nbsp;</u> คน
+        <br>
+        ประกอบด้วย
+        <?= $chk($passMode === 'attached') ?>รายชื่อดังเอกสารแนบ
+        <?= $chk($passMode === 'specify' || $passNames !== '') ?>ระบุ <u>&nbsp;<?= e($passNames !== '' ? $passNames : ($booking['purpose'] ?: '....................................................')) ?>&nbsp;</u>
+    </div>
+
+    <div class="mb-3" style="font-size: 14.5pt; line-height: 1.55;">
+        <span class="ms-4">เดินทางในวันที่</span> <u>&nbsp;<?= e($startDt['d']) ?>&nbsp;</u>
+        เดือน <u>&nbsp;<?= e($startDt['m']) ?>&nbsp;</u>
+        พ.ศ. <u>&nbsp;<?= e($startDt['y']) ?>&nbsp;</u>
+        เวลา <u>&nbsp;<?= e($startDt['t']) ?>&nbsp;</u> น.
+        <br>
+        และเดินทางกลับถึงวันที่ <u>&nbsp;<?= e($endDt['d']) ?>&nbsp;</u>
+        เดือน <u>&nbsp;<?= e($endDt['m']) ?>&nbsp;</u>
+        พ.ศ. <u>&nbsp;<?= e($endDt['y']) ?>&nbsp;</u>
+        เวลา <u>&nbsp;<?= e($endDt['t']) ?>&nbsp;</u> น.
+    </div>
+
+    <!-- Requester Signature (Aligned Right) -->
+    <div class="row g-2 mx-0 justify-content-end mb-3" style="font-size: 14pt;">
+        <div class="col-6 text-center">
+            <div class="memo-sig-slot">
+                <?php if (!empty($booking['requester_signature']) && str_starts_with((string)$booking['requester_signature'], 'uploads/signatures/')): ?>
+                    <img src="<?= e(app_url('/download.php?type=requester_signature&id=' . (int)$booking['id'])) ?>"
+                         alt="ลายมือชื่อ <?= e($booking['requester_name']) ?>"
+                         class="memo-sig-img">
+                <?php endif; ?>
+            </div>
+            <div>ลงชื่อ..............................................................</div>
+            <div>( <?= e($booking['requester_name']) ?> )</div>
+            <div>ผู้ขออนุญาต</div>
+        </div>
+    </div>
+
+    <!-- Approval Chain Box (Exact 2-col + 1-col layout) -->
+    <table class="veh-permit-box" style="font-size: 13.5pt;">
+        <tr>
+            <td style="width: 50%;">
+                <div class="fw-bold mb-1">ความเห็นหัวหน้างานยานพาหนะ</div>
+                <div style="min-height: 26px;">
+                    <?= $step1 ? e($step1['comment'] ?: 'เห็นควรอนุญาตและจัดสรรยานพาหนะ') : '' ?>
+                </div>
+                <div class="mb-2">
+                    โดยมี <u>&nbsp;<?= e($booking['driver_name'] ?: '........................................') ?>&nbsp;</u> เป็นพนักงานขับรถ
+                </div>
+                <div class="text-center">
+                    <div class="memo-sig-slot">
+                        <?php if ($step1 && !empty($step1['digital_signature']) && str_starts_with((string)$step1['digital_signature'], 'uploads/signatures/')): ?>
+                            <img src="<?= e(app_url('/download.php?type=signature&id=' . (int)$step1['id'])) ?>"
+                                 alt="ลายมือชื่อ <?= e($step1['signer_name']) ?>"
+                                 class="memo-sig-img">
+                        <?php endif; ?>
+                    </div>
+                    <div>ลงชื่อ......................................................</div>
+                    <div>( <?= $step1 ? e($step1['signer_name']) : '................................................' ?> )</div>
+                    <div><?= $step1 ? e($splitThaiDt((string)$step1['acted_at'])['short']) : '........ / ............ / ............' ?></div>
+                </div>
+            </td>
+            <td style="width: 50%;">
+                <div class="fw-bold mb-1">ความเห็นรองผู้อำนวยการกลุ่มบริหารทั่วไป</div>
+                <div class="mb-2">
+                    เพื่อโปรดพิจารณา เห็นสมควร
+                    <?= $chk($step2 && $step2['action'] === 'approved') ?>อนุญาต
+                    <?= $chk($step2 && $step2['action'] === 'rejected') ?>ไม่อนุมัติ
+                </div>
+                <?php if ($step2 && !empty($step2['comment'])): ?>
+                    <div class="small mb-1"><?= e($step2['comment']) ?></div>
+                <?php endif; ?>
+                <div class="text-center">
+                    <div class="memo-sig-slot">
+                        <?php if ($step2 && !empty($step2['digital_signature']) && str_starts_with((string)$step2['digital_signature'], 'uploads/signatures/')): ?>
+                            <img src="<?= e(app_url('/download.php?type=signature&id=' . (int)$step2['id'])) ?>"
+                                 alt="ลายมือชื่อ <?= e($step2['signer_name']) ?>"
+                                 class="memo-sig-img">
+                        <?php endif; ?>
+                    </div>
+                    <div>ลงชื่อ......................................................</div>
+                    <div>( <?= $step2 ? e($step2['signer_name']) : '................................................' ?> )</div>
+                    <div>รองผู้อำนวยการกลุ่มบริหารทั่วไป</div>
+                    <div><?= $step2 ? e($splitThaiDt((string)$step2['acted_at'])['short']) : '........ / ............ / ............' ?></div>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <div class="fw-bold mb-1">ความเห็นผู้อำนวยการโรงเรียน</div>
+                <div class="mb-2">
+                    <?= $chk($step3 && $step3['action'] === 'approved') ?>อนุญาต
+                    <span class="ms-3"><?= $chk($step3 && $step3['action'] === 'rejected') ?>ไม่อนุมัติ</span>
+                    <?php if ($step3 && !empty($step3['comment'])): ?>
+                        <span class="ms-3">(<?= e($step3['comment']) ?>)</span>
+                    <?php endif; ?>
+                </div>
+                <div class="row mx-0 justify-content-end">
+                    <div class="col-6 text-center">
+                        <div class="memo-sig-slot">
+                            <?php if ($step3 && !empty($step3['digital_signature']) && str_starts_with((string)$step3['digital_signature'], 'uploads/signatures/')): ?>
+                                <img src="<?= e(app_url('/download.php?type=signature&id=' . (int)$step3['id'])) ?>"
+                                     alt="ลายมือชื่อ <?= e($step3['signer_name']) ?>"
+                                     class="memo-sig-img">
+                            <?php endif; ?>
+                        </div>
+                        <div>ลงชื่อ......................................................</div>
+                        <div>( <?= $step3 ? e($step3['signer_name']) : '................................................' ?> )</div>
+                        <div>ผู้อำนวยการ<?= e($appOrgName) ?></div>
+                    </div>
+                </div>
+            </td>
+        </tr>
+    </table>
+<?php
+else:
 ?>
     <div class="text-center border-bottom border-dark pb-2 mb-3">
         <div class="memo-title">บันทึกข้อความ</div>
@@ -370,6 +617,7 @@ ob_start();
         </div>
     </div>
 <?php
+endif;
 $memoInnerHtml = (string)ob_get_clean();
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {

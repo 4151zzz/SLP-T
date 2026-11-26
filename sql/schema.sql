@@ -130,6 +130,7 @@ CREATE TABLE bookings (
     requester_signature VARCHAR(255) NULL,
     destination VARCHAR(255) NULL,
     passenger_count INT UNSIGNED NULL,
+    vehicle_form_meta TEXT NULL,
     current_step TINYINT UNSIGNED NOT NULL DEFAULT 1,
     status ENUM('pending_head', 'pending_vice', 'pending_director', 'approved', 'rejected', 'cancelled') NOT NULL DEFAULT 'pending_head',
     rejection_reason TEXT NULL,

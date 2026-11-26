@@ -724,6 +724,27 @@ if (!function_exists('ensure_booking_signature_schema')) {
     }
 }
 
+if (!function_exists('ensure_vehicle_form_meta_schema')) {
+    /**
+     * Ensure bookings.vehicle_form_meta column exists.
+     */
+    function ensure_vehicle_form_meta_schema(PDO $pdo): void
+    {
+        static $checked = false;
+        if ($checked) {
+            return;
+        }
+        $checked = true;
+        try {
+            if (!$pdo->query("SHOW COLUMNS FROM bookings LIKE 'vehicle_form_meta'")->fetch()) {
+                $pdo->exec('ALTER TABLE bookings ADD COLUMN vehicle_form_meta TEXT NULL AFTER passenger_count');
+            }
+        } catch (Throwable $e) {
+            // Non-fatal if DB account lacks DDL privileges
+        }
+    }
+}
+
 if (!function_exists('cancel_booking_record')) {
     /**
      * Cancel a booking by its requester or an approver/admin.

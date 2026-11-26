@@ -54,6 +54,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form['vehicle_id']      = trim((string)($_POST['vehicle_id'] ?? ''));
     $form['start_datetime']  = trim((string)($_POST['start_datetime'] ?? ''));
     $form['end_datetime']    = trim((string)($_POST['end_datetime'] ?? ''));
+    $posType = trim((string)($_POST['position_type'] ?? 'ครู'));
+    $posOther = trim((string)($_POST['position_other'] ?? ''));
+    $purType = trim((string)($_POST['purpose_type'] ?? 'ประชุม'));
+    $purOther = trim((string)($_POST['purpose_other'] ?? ''));
+    $passMode = trim((string)($_POST['passenger_mode'] ?? 'attached'));
+    $passNames = trim((string)($_POST['passenger_names'] ?? ''));
 
     $passengerCount = (int)$form['passenger_count'];
     $vehicleId = $form['vehicle_id'] !== '' ? (int)$form['vehicle_id'] : 0;
@@ -112,7 +118,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors)) {
         try {
             ensure_booking_signature_schema($pdo);
+            ensure_vehicle_form_meta_schema($pdo);
             $requesterSigPath = save_signature_data_url($_POST['requester_signature_image'] ?? null, 'req_veh');
+            $vehicleMetaJson = json_encode([
+                'position_type'   => $posType,
+                'position_other'  => $posOther,
+                'purpose_type'    => $purType,
+                'purpose_other'   => $purOther,
+                'passenger_mode'  => $passMode,
+                'passenger_names' => $passNames,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $refCode = generate_booking_reference($pdo);
             $stmtIns = $pdo->prepare(
                 'INSERT INTO bookings (
@@ -120,13 +135,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     room_id, vehicle_id, driver_id, title, purpose,
                     start_datetime, end_datetime, attendee_count, equipment_requested,
                     permission_letter_path, permission_letter_original_name, requester_signature,
-                    destination, passenger_count, current_step, status
+                    destination, passenger_count, vehicle_form_meta, current_step, status
                 ) VALUES (
                     :ref, "vehicle", :req_id, "internal",
                     NULL, :vehicle_id, NULL, :title, :purpose,
                     :start_dt, :end_dt, NULL, NULL,
                     :perm_path, :perm_orig, :req_sig,
-                    :dest, :passengers, 1, "pending_head"
+                    :dest, :passengers, :vmeta, 1, "pending_head"
                 )'
             );
             $stmtIns->execute([
@@ -142,6 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':req_sig'    => $requesterSigPath,
                 ':dest'       => mb_substr($form['destination'], 0, 255),
                 ':passengers' => $passengerCount,
+                ':vmeta'      => $vehicleMetaJson,
             ]);
             $newBookingId = (int)$pdo->lastInsertId();
 
@@ -243,6 +259,47 @@ require __DIR__ . '/includes/layout_header.php';
                            placeholder="เช่น กระทรวงศึกษาธิการ เขตดุสิต"
                            required
                            data-testid="book-vehicle-destination">
+                </div>
+
+                <!-- Vehicle Permit Template Fields -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label for="position_type" class="form-label fw-semibold small text-secondary">ตำแหน่งผู้ขออนุญาต (ในใบขออนุญาต)</label>
+                        <select class="form-select touch-target" id="position_type" name="position_type">
+                            <option value="ครู" selected>ครู</option>
+                            <option value="รองผู้อำนวยการโรงเรียน">รองผู้อำนวยการโรงเรียน</option>
+                            <option value="พนักงานราชการ">พนักงานราชการ</option>
+                            <option value="ลูกจ้างประจำ">ลูกจ้างประจำ</option>
+                            <option value="ลูกจ้างชั่วคราว">ลูกจ้างชั่วคราว</option>
+                            <option value="อื่นๆ">อื่นๆ (ระบุ)</option>
+                        </select>
+                        <input type="text" class="form-control form-control-sm mt-2" name="position_other" placeholder="ระบุตำแหน่งเพิ่มเติม (ถ้าเลือกอื่นๆ)">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="purpose_type" class="form-label fw-semibold small text-secondary">วัตถุประสงค์หลัก (ติ๊กในใบขออนุญาต)</label>
+                        <select class="form-select touch-target" id="purpose_type" name="purpose_type">
+                            <option value="ประชุม" selected>ประชุม</option>
+                            <option value="อบรม">อบรม</option>
+                            <option value="สัมมนา">สัมมนา</option>
+                            <option value="อบรมเชิงปฏิบัติการ">อบรมเชิงปฏิบัติการ</option>
+                            <option value="อื่นๆ">อื่นๆ (ระบุ)</option>
+                        </select>
+                        <input type="text" class="form-control form-control-sm mt-2" name="purpose_other" placeholder="ระบุรายละเอียดเพิ่มเติม (ถ้าเลือกอื่นๆ)">
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-5">
+                        <label for="passenger_mode" class="form-label fw-semibold small text-secondary">รายชื่อผู้โดยสารประกอบด้วย</label>
+                        <select class="form-select touch-target" id="passenger_mode" name="passenger_mode">
+                            <option value="attached" selected>รายชื่อดังเอกสารแนบ</option>
+                            <option value="specify">ระบุรายชื่อ</option>
+                        </select>
+                    </div>
+                    <div class="col-md-7">
+                        <label for="passenger_names" class="form-label fw-semibold small text-secondary">ระบุรายชื่อผู้โดยสาร (ถ้ามี)</label>
+                        <input type="text" class="form-control touch-target" id="passenger_names" name="passenger_names" placeholder="เช่น นาย ก., นาง ข. (หรือเว้นว่างหากแนบไฟล์)">
+                    </div>
                 </div>
 
                 <div class="row g-3 mb-3">
