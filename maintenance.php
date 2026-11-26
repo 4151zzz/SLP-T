@@ -130,6 +130,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 ':status'            => REPAIR_STATUS_WAITING,
             ]);
 
+            if (function_exists('send_telegram_message')) {
+                $urgLabel = ($form['urgency'] === 'urgent') ? 'เร่งด่วน' : 'ปกติ';
+                $tgMaint = "🔧 <b>แจ้งซ่อมออนไลน์ใหม่ ({$ticketCode})</b>\n"
+                    . "📍 <b>สถานที่:</b> " . htmlspecialchars($form['location_text'], ENT_QUOTES, 'UTF-8') . "\n"
+                    . "🛠️ <b>อุปกรณ์:</b> " . htmlspecialchars($form['equipment_name'] !== '' ? $form['equipment_name'] : '-', ENT_QUOTES, 'UTF-8') . "\n"
+                    . "⚠️ <b>ความเร่งด่วน:</b> {$urgLabel}\n"
+                    . "👤 <b>ผู้แจ้ง:</b> " . htmlspecialchars((string)($user['full_name'] ?? ''), ENT_QUOTES, 'UTF-8');
+                send_telegram_message($pdo, $tgMaint);
+            }
+
             flash('success', "ส่งใบแจ้งซ่อม {$ticketCode} เรียบร้อยแล้ว");
             redirect(app_url('/maintenance.php'));
         } catch (Throwable $e) {

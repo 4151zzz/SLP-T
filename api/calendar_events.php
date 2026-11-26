@@ -68,7 +68,7 @@ if (in_array($filterType, ['all', 'room', 'vehicle', 'booking'], true)) {
                     LEFT JOIN rooms r ON r.id = b.room_id
                     LEFT JOIN vehicles v ON v.id = b.vehicle_id
                     LEFT JOIN drivers d ON d.id = b.driver_id
-                    WHERE b.status != 'rejected'
+                    WHERE b.status NOT IN ('rejected', 'cancelled')
                       AND b.start_datetime < :end_dt
                       AND b.end_datetime > :start_dt
                       {$bookingTypeWhere}

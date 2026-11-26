@@ -177,7 +177,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ROLE_STAFF,
                 null,
                 'staff@slp.local',
-                "มีคำขอจองยานพาหนะใหม่ {$refCode} ({$form['destination']}) รอจัดสรรรถและพนักงานขับรถ"
+                "มีคำขอจองยานพาหนะใหม่ {$refCode} ({$form['destination']}) รอจัดสรรรถและพนักงานขับรถ",
+                false
             );
 
             flash('success', "ส่งคำขอจองยานพาหนะ {$refCode} เรียบร้อยแล้ว");

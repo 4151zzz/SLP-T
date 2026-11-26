@@ -26,30 +26,59 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 $qrEnabled = is_qr_enabled($pdo);
 
-$assets = $pdo->query(
-    'SELECT a.*, r.room_code, r.name AS room_name
-     FROM assets a
-     LEFT JOIN rooms r ON r.id = a.room_id
-     WHERE a.is_active = 1
-     ORDER BY a.category ASC, a.asset_code ASC'
-)->fetchAll();
-
-$rooms = $pdo->query(
-    'SELECT *
-     FROM rooms
-     WHERE is_active = 1
-     ORDER BY room_code ASC'
-)->fetchAll();
-
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $host = (string)($_SERVER['HTTP_HOST'] ?? '127.0.0.1:3000');
 $baseAbs = $scheme . '://' . $host;
 
-$categoryNames = [
-    'equipment' => 'อุปกรณ์ทั่วไป',
-    'key'       => 'กุญแจห้อง',
-    'av'        => 'โสตทัศนูปกรณ์',
-    'other'     => 'อื่น ๆ',
+$unifiedQrs = [
+    [
+        'testid'     => 'qr-unified-room',
+        'badge'      => 'QR จองห้องประชุม / ห้องเรียน',
+        'badgeClass' => 'text-bg-primary bg-opacity-10 text-primary border border-primary-subtle',
+        'icon'       => 'bi-house-fill text-primary',
+        'title'      => 'จองห้องประชุม',
+        'subtitle'   => 'สแกนเพื่อเข้าสู่หน้าจองห้องประชุม / ห้องเรียนทันที',
+        'url'        => $baseAbs . app_url('/book_room.php'),
+        'btnClass'   => 'btn-outline-primary',
+        'btnText'    => 'เปิดหน้าจองห้อง',
+        'filename'   => 'QR-BOOK-ROOM.png',
+    ],
+    [
+        'testid'     => 'qr-unified-vehicle',
+        'badge'      => 'QR จองยานพาหนะ',
+        'badgeClass' => 'text-bg-success bg-opacity-10 text-success border border-success-subtle',
+        'icon'       => 'bi-car-front-fill text-success',
+        'title'      => 'จองยานพาหนะ',
+        'subtitle'   => 'สแกนเพื่อเข้าสู่หน้าขอใช้รถยนต์ส่วนกลางทันที',
+        'url'        => $baseAbs . app_url('/book_vehicle.php'),
+        'btnClass'   => 'btn-outline-success',
+        'btnText'    => 'เปิดหน้าจองรถ',
+        'filename'   => 'QR-BOOK-VEHICLE.png',
+    ],
+    [
+        'testid'     => 'qr-unified-borrow',
+        'badge'      => 'QR ยืม-คืนอุปกรณ์/กุญแจ',
+        'badgeClass' => 'text-bg-info bg-opacity-10 text-info border border-info-subtle',
+        'icon'       => 'bi-key-fill text-info',
+        'title'      => 'ยืม-คืนอุปกรณ์และกุญแจ',
+        'subtitle'   => 'สแกนเพื่อเข้าสู่หน้ายืม-คืนอุปกรณ์/กุญแจทันที',
+        'url'        => $baseAbs . app_url('/assets_borrow.php'),
+        'btnClass'   => 'btn-outline-info text-dark',
+        'btnText'    => 'เปิดหน้ายืม-คืน',
+        'filename'   => 'QR-ASSETS-BORROW.png',
+    ],
+    [
+        'testid'     => 'qr-unified-maint',
+        'badge'      => 'QR แจ้งซ่อมออนไลน์',
+        'badgeClass' => 'text-bg-warning bg-opacity-25 text-dark border border-warning-subtle',
+        'icon'       => 'bi-wrench-adjustable text-warning',
+        'title'      => 'แจ้งซ่อมออนไลน์',
+        'subtitle'   => 'สแกนเพื่อเข้าสู่หน้าแจ้งซ่อมออนไลน์ทันที',
+        'url'        => $baseAbs . app_url('/maintenance.php'),
+        'btnClass'   => 'btn-outline-warning text-dark',
+        'btnText'    => 'เปิดหน้าแจ้งซ่อม',
+        'filename'   => 'QR-MAINTENANCE.png',
+    ],
 ];
 
 $extraHead = <<<'HTML'
@@ -57,8 +86,8 @@ $extraHead = <<<'HTML'
 .qr-card {
     background: #fff;
     border: 1px solid #e2e8f0;
-    border-radius: 1rem;
-    padding: 1.1rem;
+    border-radius: 1.1rem;
+    padding: 1.25rem;
     text-align: center;
     height: 100%;
     display: flex;
@@ -69,19 +98,19 @@ $extraHead = <<<'HTML'
 }
 .qr-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
 }
 .qr-render-box {
-    width: 156px;
-    height: 156px;
-    padding: 8px;
+    width: 176px;
+    height: 176px;
+    padding: 10px;
     background: #ffffff;
     border: 1px solid #e2e8f0;
-    border-radius: 0.75rem;
+    border-radius: 0.85rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0.5rem auto;
+    margin: 0.75rem auto;
 }
 .qr-render-box img,
 .qr-render-box canvas {
@@ -107,9 +136,9 @@ require_once __DIR__ . '/includes/layout_header.php';
 <div class="welcome-card p-3 p-md-4 mb-4 no-print">
     <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
         <div>
-            <div class="small text-primary fw-semibold mb-1"><i class="bi bi-qr-code me-1"></i>QR Code ประจำอุปกรณ์และห้องประชุม</div>
-            <h1 class="h4 fw-bold mb-1">พิมพ์ QR Code</h1>
-            <p class="text-muted small mb-0">สร้างและพิมพ์ป้าย QR Code สำหรับสแกนยืม-คืนอุปกรณ์/กุญแจ และแจ้งซ่อมออนไลน์ได้ทันที</p>
+            <div class="small text-primary fw-semibold mb-1"><i class="bi bi-qr-code me-1"></i>QR Code หลักของระบบ</div>
+            <h1 class="h4 fw-bold text-dark mb-1">พิมพ์ QR Code</h1>
+            <p class="small text-muted mb-0">QR Code ชุดเดียวใช้งานได้ทันทีสำหรับ จองห้องประชุม, จองยานพาหนะ, ยืม-คืนอุปกรณ์ และแจ้งซ่อมออนไลน์</p>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <!-- Toggle QR On/Off -->
@@ -144,7 +173,7 @@ require_once __DIR__ . '/includes/layout_header.php';
         </div>
         <h2 class="h5 fw-bold text-dark mb-2">ระบบ QR Code ถูกปิดใช้งานอยู่</h2>
         <p class="text-muted small mx-auto mb-4" style="max-width: 520px;">
-            ขณะนี้ระบบได้ปิดการสร้างและใช้งานทางลัด QR Code ชั่วคราว ผู้ใช้งานยังสามารถยืม-คืนอุปกรณ์และแจ้งซ่อมผ่านเมนูหลักได้ตามปกติ
+            ขณะนี้ระบบได้ปิดการสร้างและใช้งานทางลัด QR Code ชั่วคราว ผู้ใช้งานยังสามารถจองห้อง จองรถ ยืม-คืนอุปกรณ์ และแจ้งซ่อมผ่านเมนูหลักได้ตามปกติ
         </p>
         <form method="post" action="<?= e(app_url('/qr_codes.php')) ?>" class="d-inline">
             <?= csrf_field() ?>
@@ -156,231 +185,35 @@ require_once __DIR__ . '/includes/layout_header.php';
         </form>
     </div>
 <?php else: ?>
-    <!-- Filter Tabs -->
-    <div class="d-flex flex-wrap gap-2 mb-4 no-print" id="qrFilterTabs">
-        <button type="button" class="btn btn-primary rounded-pill px-3 fw-semibold qr-filter-btn active" data-filter="all">
-            ทั้งหมด (<?= (count($assets) * 2) + count($rooms) + 2 ?>)
-        </button>
-        <button type="button" class="btn btn-outline-primary rounded-pill px-3 fw-semibold qr-filter-btn" data-filter="borrow">
-            <i class="bi bi-key me-1"></i>ยืม-คืนอุปกรณ์/กุญแจ (<?= count($assets) ?>)
-        </button>
-        <button type="button" class="btn btn-outline-primary rounded-pill px-3 fw-semibold qr-filter-btn" data-filter="maint-room">
-            <i class="bi bi-building me-1"></i>แจ้งซ่อมห้องประชุม (<?= count($rooms) ?>)
-        </button>
-        <button type="button" class="btn btn-outline-primary rounded-pill px-3 fw-semibold qr-filter-btn" data-filter="maint-asset">
-            <i class="bi bi-tools me-1"></i>แจ้งซ่อมอุปกรณ์ (<?= count($assets) ?>)
-        </button>
-    </div>
+    <div class="row g-4" data-testid="unified-qr-grid">
+        <?php foreach ($unifiedQrs as $uq): ?>
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="qr-card" data-testid="<?= e($uq['testid']) ?>">
+                    <div class="w-100">
+                        <span class="badge <?= e($uq['badgeClass']) ?> mb-2">
+                            <?= e($uq['badge']) ?>
+                        </span>
+                        <h2 class="h6 fw-bold text-dark mb-1">
+                            <i class="bi <?= e($uq['icon']) ?> me-1"></i><?= e($uq['title']) ?>
+                        </h2>
+                        <div class="small text-muted"><?= e($uq['subtitle']) ?></div>
+                    </div>
 
-    <!-- General System QR Codes (always available even when inventory/rooms are empty) -->
-    <div class="mb-5 qr-section" data-qr-section="general">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-            <div>
-                <h2 class="h5 fw-bold mb-0"><i class="bi bi-qr-code-scan text-primary me-2"></i>QR Code หลักของระบบ (ใช้งานได้ทันที)</h2>
-                <div class="small text-muted no-print">สำหรับติดหน้าห้องพัสดุ เคาน์เตอร์บริการ หรือบอร์ดประชาสัมพันธ์</div>
-            </div>
-            <span class="badge rounded-pill text-bg-dark">2 รายการ</span>
-        </div>
-        <div class="row g-3">
-            <?php
-            $generalBorrowUrl = $baseAbs . app_url('/assets_borrow.php');
-            $generalMaintUrl = $baseAbs . app_url('/maintenance.php');
-            $generalQrs = [
-                [
-                    'testid'   => 'qr-general-borrow',
-                    'badge'    => 'QR กลาง · ยืม-คืนอุปกรณ์/กุญแจ',
-                    'title'    => 'สแกนเพื่อยืม-คืนอุปกรณ์และกุญแจ',
-                    'subtitle' => 'สแกนเพื่อเข้าสู่หน้ายืม-คืนอุปกรณ์/กุญแจ',
-                    'url'      => $generalBorrowUrl,
-                    'btnClass' => 'btn-outline-primary',
-                    'btnText'  => 'เปิดหน้ายืม-คืน',
-                    'filename' => 'QR-SYSTEM-BORROW.png',
-                ],
-                [
-                    'testid'   => 'qr-general-maint',
-                    'badge'    => 'QR กลาง · แจ้งซ่อมออนไลน์',
-                    'title'    => 'สแกนเพื่อแจ้งซ่อมออนไลน์',
-                    'subtitle' => 'สแกนเพื่อเข้าสู่หน้าแจ้งซ่อมออนไลน์',
-                    'url'      => $generalMaintUrl,
-                    'btnClass' => 'btn-outline-warning text-dark',
-                    'btnText'  => 'เปิดหน้าแจ้งซ่อม',
-                    'filename' => 'QR-SYSTEM-MAINT.png',
-                ],
-            ];
-            foreach ($generalQrs as $gq): ?>
-                <div class="col-12 col-sm-6 col-md-4 col-xl-3">
-                    <div class="qr-card" data-testid="<?= e($gq['testid']) ?>">
-                        <div class="w-100">
-                            <span class="badge text-bg-primary bg-opacity-10 text-primary border border-primary-subtle mb-1">
-                                <?= e($gq['badge']) ?>
-                            </span>
-                            <div class="fw-bold text-dark"><?= e($gq['title']) ?></div>
-                        </div>
+                    <div class="qr-render-box" data-qr-url="<?= e($uq['url']) ?>" aria-label="QR <?= e($uq['title']) ?>"></div>
 
-                        <div class="qr-render-box" data-qr-url="<?= e($gq['url']) ?>" aria-label="<?= e($gq['title']) ?>"></div>
-
-                        <div class="w-100">
-                            <div class="small text-muted mb-2"><?= e($gq['subtitle']) ?></div>
-                            <div class="d-flex gap-1 justify-content-center no-print">
-                                <a href="<?= e($gq['url']) ?>" class="btn btn-sm <?= e($gq['btnClass']) ?> rounded-3 px-2">
-                                    <i class="bi bi-box-arrow-up-right me-1"></i><?= e($gq['btnText']) ?>
-                                </a>
-                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-3 px-2 btn-dl-qr" data-filename="<?= e($gq['filename']) ?>" title="บันทึกภาพ QR">
-                                    <i class="bi bi-download"></i>
-                                </button>
-                            </div>
+                    <div class="w-100">
+                        <div class="d-flex gap-2 justify-content-center no-print">
+                            <a href="<?= e($uq['url']) ?>" class="btn btn-sm <?= e($uq['btnClass']) ?> rounded-3 px-3 fw-semibold">
+                                <i class="bi bi-box-arrow-up-right me-1"></i><?= e($uq['btnText']) ?>
+                            </a>
+                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-3 px-2 btn-dl-qr" data-filename="<?= e($uq['filename']) ?>" title="บันทึกภาพ QR">
+                                <i class="bi bi-download"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
-            <?php endforeach; ?>
-        </div>
-    </div>
-
-    <!-- Section 1: Equipment & Key Borrow/Return QR Codes -->
-    <div class="mb-5 qr-section" data-qr-section="borrow">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-            <div>
-                <h2 class="h5 fw-bold mb-0"><i class="bi bi-key-fill text-primary me-2"></i>QR Code สำหรับยืม-คืนอุปกรณ์และกุญแจ</h2>
-                <div class="small text-muted no-print">สแกนเพื่อเปิดหน้ายืม-คืนพร้อมเลือกรายการให้อัตโนมัติ</div>
             </div>
-            <span class="badge rounded-pill text-bg-primary"><?= count($assets) ?> รายการ</span>
-        </div>
-
-        <?php if (empty($assets)): ?>
-            <div class="spotlight-card p-4 text-center text-muted small">
-                ยังไม่มีอุปกรณ์หรือกุญแจในระบบ — สามารถเพิ่มได้ที่หน้า <a href="<?= e(app_url('/assets_borrow.php')) ?>">ยืม-คืนอุปกรณ์/กุญแจ</a>
-            </div>
-        <?php else: ?>
-            <div class="row g-3">
-                <?php foreach ($assets as $ast):
-                    $borrowUrl = $baseAbs . app_url('/assets_borrow.php?asset_id=' . (int)$ast['id'] . '&qr=1');
-                    $catLabel = $categoryNames[$ast['category']] ?? 'อุปกรณ์';
-                ?>
-                    <div class="col-12 col-sm-6 col-md-4 col-xl-3">
-                        <div class="qr-card" data-testid="qr-borrow-<?= e($ast['asset_code']) ?>">
-                            <div class="w-100">
-                                <span class="badge text-bg-primary bg-opacity-10 text-primary border border-primary-subtle mb-1">
-                                    สแกนยืม-คืน · <?= e($catLabel) ?>
-                                </span>
-                                <div class="fw-bold text-dark small font-monospace"><?= e($ast['asset_code']) ?></div>
-                                <div class="fw-semibold text-dark"><?= e($ast['name']) ?></div>
-                            </div>
-
-                            <div class="qr-render-box" data-qr-url="<?= e($borrowUrl) ?>" aria-label="QR <?= e($ast['asset_code']) ?>"></div>
-
-                            <div class="w-100">
-                                <?php if (!empty($ast['location'])): ?>
-                                    <div class="small text-muted mb-2"><i class="bi bi-geo-alt me-1"></i><?= e($ast['location']) ?></div>
-                                <?php endif; ?>
-                                <div class="d-flex gap-1 justify-content-center no-print">
-                                    <a href="<?= e($borrowUrl) ?>" class="btn btn-sm btn-outline-primary rounded-3 px-2" title="ทดสอบเปิดลิงก์">
-                                        <i class="bi bi-box-arrow-up-right me-1"></i>เปิดหน้ายืม-คืน
-                                    </a>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-3 px-2 btn-dl-qr" data-filename="QR-BORROW-<?= e($ast['asset_code']) ?>.png" title="บันทึกภาพ QR">
-                                        <i class="bi bi-download"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
-    </div>
-
-    <!-- Section 2: Room Maintenance QR Codes -->
-    <div class="mb-5 qr-section" data-qr-section="maint-room">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-            <div>
-                <h2 class="h5 fw-bold mb-0"><i class="bi bi-building-fill text-warning me-2"></i>QR Code แจ้งซ่อมประจำห้องประชุม</h2>
-                <div class="small text-muted no-print">ติดหน้าห้องประชุมเพื่อให้ผู้ใช้งานสแกนแจ้งซ่อมประจำห้องได้ทันที</div>
-            </div>
-            <span class="badge rounded-pill text-bg-warning text-dark"><?= count($rooms) ?> ห้อง</span>
-        </div>
-
-        <?php if (empty($rooms)): ?>
-            <div class="spotlight-card p-4 text-center text-muted small">ยังไม่มีข้อมูลห้องประชุมในระบบ</div>
-        <?php else: ?>
-            <div class="row g-3">
-                <?php foreach ($rooms as $rm):
-                    $roomMaintUrl = $baseAbs . app_url('/maintenance.php?room_id=' . (int)$rm['id']);
-                ?>
-                    <div class="col-12 col-sm-6 col-md-4 col-xl-3">
-                        <div class="qr-card" data-testid="qr-room-<?= e($rm['room_code']) ?>">
-                            <div class="w-100">
-                                <span class="badge text-bg-warning bg-opacity-25 text-dark border border-warning-subtle mb-1">สแกนแจ้งซ่อมห้อง</span>
-                                <div class="fw-bold text-dark small font-monospace"><?= e($rm['room_code']) ?></div>
-                                <div class="fw-semibold text-dark"><?= e($rm['name']) ?></div>
-                            </div>
-
-                            <div class="qr-render-box" data-qr-url="<?= e($roomMaintUrl) ?>" aria-label="QR <?= e($rm['room_code']) ?>"></div>
-
-                            <div class="w-100">
-                                <div class="small text-muted mb-2">
-                                    <?= e($rm['building'] ?? '') ?>
-                                    <?= !empty($rm['floor']) ? ' · ชั้น ' . e($rm['floor']) : '' ?>
-                                </div>
-                                <div class="d-flex gap-1 justify-content-center no-print">
-                                    <a href="<?= e($roomMaintUrl) ?>" class="btn btn-sm btn-outline-warning text-dark rounded-3 px-2">
-                                        <i class="bi bi-box-arrow-up-right me-1"></i>ทดสอบลิงก์
-                                    </a>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-3 px-2 btn-dl-qr" data-filename="QR-MAINT-<?= e($rm['room_code']) ?>.png" title="บันทึกภาพ QR">
-                                        <i class="bi bi-download"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
-    </div>
-
-    <!-- Section 3: Asset Maintenance QR Codes -->
-    <div class="mb-4 qr-section" data-qr-section="maint-asset">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-            <div>
-                <h2 class="h5 fw-bold mb-0"><i class="bi bi-tools text-info me-2"></i>QR Code แจ้งซ่อมประจำอุปกรณ์</h2>
-                <div class="small text-muted no-print">ติดบนตัวอุปกรณ์เพื่อให้ผู้ใช้งานสแกนแจ้งซ่อมอุปกรณ์ชิ้นนั้นได้ทันที</div>
-            </div>
-            <span class="badge rounded-pill text-bg-info text-dark"><?= count($assets) ?> รายการ</span>
-        </div>
-
-        <?php if (empty($assets)): ?>
-            <div class="spotlight-card p-4 text-center text-muted small">ยังไม่มีข้อมูลอุปกรณ์ในระบบ</div>
-        <?php else: ?>
-            <div class="row g-3">
-                <?php foreach ($assets as $ast):
-                    $assetMaintUrl = $baseAbs . app_url('/maintenance.php?asset_id=' . (int)$ast['id']);
-                ?>
-                    <div class="col-12 col-sm-6 col-md-4 col-xl-3">
-                        <div class="qr-card" data-testid="qr-asset-maint-<?= e($ast['asset_code']) ?>">
-                            <div class="w-100">
-                                <span class="badge text-bg-info bg-opacity-25 text-dark border border-info-subtle mb-1">สแกนแจ้งซ่อมอุปกรณ์</span>
-                                <div class="fw-bold text-dark small font-monospace"><?= e($ast['asset_code']) ?></div>
-                                <div class="fw-semibold text-dark"><?= e($ast['name']) ?></div>
-                            </div>
-
-                            <div class="qr-render-box" data-qr-url="<?= e($assetMaintUrl) ?>" aria-label="QR <?= e($ast['asset_code']) ?>"></div>
-
-                            <div class="w-100">
-                                <?php if (!empty($ast['location'])): ?>
-                                    <div class="small text-muted mb-2"><i class="bi bi-geo-alt me-1"></i><?= e($ast['location']) ?></div>
-                                <?php endif; ?>
-                                <div class="d-flex gap-1 justify-content-center no-print">
-                                    <a href="<?= e($assetMaintUrl) ?>" class="btn btn-sm btn-outline-info text-dark rounded-3 px-2">
-                                        <i class="bi bi-box-arrow-up-right me-1"></i>ทดสอบลิงก์
-                                    </a>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-3 px-2 btn-dl-qr" data-filename="QR-MAINT-<?= e($ast['asset_code']) ?>.png" title="บันทึกภาพ QR">
-                                        <i class="bi bi-download"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
+        <?php endforeach; ?>
     </div>
 <?php endif; ?>
 
@@ -390,15 +223,14 @@ $extraScripts = <<<HTML
 <script src="{$qrScriptUrl}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // Render real scannable QR codes
     document.querySelectorAll('.qr-render-box[data-qr-url]').forEach(function (box) {
         var targetUrl = box.getAttribute('data-qr-url');
         if (!targetUrl || typeof QRCode === 'undefined') return;
         box.innerHTML = '';
         new QRCode(box, {
             text: targetUrl,
-            width: 138,
-            height: 138,
+            width: 156,
+            height: 156,
             colorDark: '#0f172a',
             colorLight: '#ffffff',
             correctLevel: QRCode.CorrectLevel.M
@@ -412,28 +244,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }, 50);
     });
 
-    // Filter tabs
-    document.querySelectorAll('.qr-filter-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var filter = btn.getAttribute('data-filter');
-            document.querySelectorAll('.qr-filter-btn').forEach(function (b) {
-                b.classList.remove('btn-primary', 'active');
-                b.classList.add('btn-outline-primary');
-            });
-            btn.classList.remove('btn-outline-primary');
-            btn.classList.add('btn-primary', 'active');
-
-            document.querySelectorAll('.qr-section').forEach(function (sec) {
-                if (filter === 'all' || sec.getAttribute('data-qr-section') === filter) {
-                    sec.classList.remove('d-none');
-                } else {
-                    sec.classList.add('d-none');
-                }
-            });
-        });
-    });
-
-    // Download QR PNG button
     document.querySelectorAll('.btn-dl-qr').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var card = btn.closest('.qr-card');

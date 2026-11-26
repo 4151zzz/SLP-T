@@ -13,7 +13,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $postAction = trim((string)($_POST['action'] ?? ''));
     $targetBid = (int)($_POST['booking_id'] ?? 0);
     $returnTo = trim((string)($_POST['return_to'] ?? ''));
-    $redirectTarget = ($returnTo === 'dashboard') ? app_url('/dashboard.php') : app_url('/approvals.php');
+    $returnTab = trim((string)($_POST['return_tab'] ?? 'mine'));
+    if (!in_array($returnTab, ['mine', 'all_pending', 'history'], true)) {
+        $returnTab = 'mine';
+    }
+    $redirectTarget = ($returnTo === 'dashboard')
+        ? app_url('/dashboard.php')
+        : app_url('/approvals.php?tab=' . urlencode($returnTab));
     if ($postAction === 'cancel_booking') {
         $res = cancel_booking_record($pdo, $targetBid, $user, trim((string)($_POST['reason'] ?? '')));
         flash($res['ok'] ? 'success' : 'danger', $res['message']);
@@ -457,20 +463,22 @@ require __DIR__ . '/includes/layout_header.php';
                         <?php endif; ?>
 
                         <?php if ($st !== 'cancelled'): ?>
-                            <form method="post" action="<?= e(app_url('/approvals.php')) ?>" class="d-inline" data-confirm="ต้องการยกเลิกคำขอ &quot;<?= e($b['reference_code']) ?>&quot; ใช่หรือไม่?">
+                            <form method="post" action="<?= e(app_url('/approvals.php')) ?>" class="d-inline" data-confirm="ต้องการยกเลิกคำขอ &quot;<?= e($b['reference_code']) ?>&quot; และลบออกจากฐานข้อมูล/ปฏิทินใช่หรือไม่?" data-confirm-danger="1">
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="action" value="cancel_booking">
                                 <input type="hidden" name="booking_id" value="<?= $bid ?>">
+                                <input type="hidden" name="return_tab" value="<?= e($tab) ?>">
                                 <button type="submit" class="btn btn-sm btn-outline-warning text-dark rounded-3 px-2 fw-semibold touch-target" data-testid="btn-approver-cancel-<?= $bid ?>">
                                     <i class="bi bi-x-circle me-1"></i>ยกเลิกคำขอ
                                 </button>
                             </form>
                         <?php endif; ?>
 
-                        <form method="post" action="<?= e(app_url('/approvals.php')) ?>" class="d-inline" data-confirm="ต้องการลบข้อมูลคิวงาน &quot;<?= e($b['reference_code']) ?>&quot; ออกจากฐานข้อมูลอย่างถาวรใช่หรือไม่?" data-confirm-danger="1">
+                        <form method="post" action="<?= e(app_url('/approvals.php')) ?>" class="d-inline" data-confirm="ต้องการลบข้อมูลคิวงาน &quot;<?= e($b['reference_code']) ?>&quot; ออกจากฐานข้อมูลและปฏิทินอย่างถาวรใช่หรือไม่?" data-confirm-danger="1">
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="delete_booking">
                             <input type="hidden" name="booking_id" value="<?= $bid ?>">
+                            <input type="hidden" name="return_tab" value="<?= e($tab) ?>">
                             <button type="submit" class="btn btn-sm btn-outline-danger rounded-3 px-2 touch-target" title="ลบข้อมูลคิวงานออกจากฐานข้อมูล" data-testid="btn-approver-delete-<?= $bid ?>">
                                 <i class="bi bi-trash3"></i>
                             </button>

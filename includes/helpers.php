@@ -333,6 +333,15 @@ if (!function_exists('nav_items')) {
                 'badge'  => null,
             ],
             [
+                'key'    => 'telegram_settings',
+                'href'   => app_url('/telegram_settings.php'),
+                'label'  => 'ตั้งค่า Telegram',
+                'icon'   => 'bi-telegram',
+                'testid' => 'nav-telegram-settings',
+                'roles'  => $staffAdmin,
+                'badge'  => null,
+            ],
+            [
                 'key'    => 'dashboard',
                 'href'   => app_url('/dashboard.php'),
                 'label'  => 'แดชบอร์ดผู้บริหาร',
@@ -382,8 +391,8 @@ if (!function_exists('nav_items')) {
             ROLE_DIRECTOR      => ['dashboard', 'print_report', 'approvals', 'saved_memos', 'calendar', 'my_bookings', 'book_room', 'book_vehicle', 'assets_borrow', 'maintenance'],
             ROLE_VICE_DIRECTOR => ['dashboard', 'print_report', 'approvals', 'saved_memos', 'calendar', 'my_bookings', 'book_room', 'book_vehicle', 'assets_borrow', 'maintenance'],
             ROLE_HEAD          => ['approvals', 'dashboard', 'print_report', 'saved_memos', 'calendar', 'book_room', 'book_vehicle', 'my_bookings', 'assets_borrow', 'maintenance'],
-            ROLE_STAFF         => ['approvals', 'maintenance_manage', 'assets_borrow', 'qr_codes', 'saved_memos', 'print_report', 'calendar', 'dashboard', 'book_room', 'book_vehicle', 'my_bookings', 'maintenance'],
-            ROLE_ADMIN         => ['dashboard', 'print_report', 'approvals', 'saved_memos', 'users_manage', 'resources_manage', 'maintenance_manage', 'assets_borrow', 'qr_codes', 'calendar', 'book_room', 'book_vehicle', 'my_bookings', 'maintenance'],
+            ROLE_STAFF         => ['approvals', 'maintenance_manage', 'assets_borrow', 'qr_codes', 'telegram_settings', 'saved_memos', 'print_report', 'calendar', 'dashboard', 'book_room', 'book_vehicle', 'my_bookings', 'maintenance'],
+            ROLE_ADMIN         => ['dashboard', 'print_report', 'approvals', 'saved_memos', 'users_manage', 'resources_manage', 'maintenance_manage', 'assets_borrow', 'qr_codes', 'telegram_settings', 'calendar', 'book_room', 'book_vehicle', 'my_bookings', 'maintenance'],
             ROLE_USER          => ['calendar', 'book_room', 'book_vehicle', 'my_bookings', 'saved_memos', 'assets_borrow', 'maintenance'],
             ROLE_EXTERNAL_USER => ['book_room', 'my_bookings', 'saved_memos', 'calendar', 'maintenance'],
         ];
@@ -456,31 +465,11 @@ if (!function_exists('cancel_booking_record')) {
      */
     function cancel_booking_record(PDO $pdo, int $bookingId, array $actorUser, string $reason = ''): array
     {
-        if ($bookingId <= 0) {
-            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคำขอที่ต้องการยกเลิก'];
+        $res = delete_booking_record($pdo, $bookingId, $actorUser, true);
+        if ($res['ok']) {
+            $res['message'] = str_replace('ลบข้อมูลคิวงาน', 'ยกเลิกและลบคำขอ', $res['message']);
         }
-        ensure_booking_cancelled_schema($pdo);
-        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
-        $stmt->execute([':id' => $bookingId]);
-        $row = $stmt->fetch();
-        if (!$row) {
-            return ['ok' => false, 'message' => 'ไม่พบคำขอจองนี้ในระบบ'];
-        }
-        $uid = (int)$actorUser['id'];
-        $isOwner = ((int)$row['requester_id'] === $uid);
-        $isApprover = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
-        if (!$isOwner && !$isApprover) {
-            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ยกเลิกคำขอจองนี้'];
-        }
-        if ((string)$row['status'] === 'cancelled') {
-            return ['ok' => false, 'message' => 'คำขอนี้ถูกยกเลิกไปแล้ว'];
-        }
-        $cancelReason = trim($reason) !== ''
-            ? trim($reason)
-            : ('ยกเลิกโดย' . ($isOwner ? 'ผู้ขอจอง' : 'ผู้พิจารณา/ผู้ดูแล') . ' (' . ($actorUser['full_name'] ?? '') . ')');
-        $upd = $pdo->prepare("UPDATE bookings SET status = 'cancelled', rejection_reason = :r WHERE id = :id");
-        $upd->execute([':r' => mb_substr($cancelReason, 0, 500), ':id' => $bookingId]);
-        return ['ok' => true, 'message' => 'ยกเลิกคำขอ "' . $row['reference_code'] . '" เรียบร้อยแล้ว'];
+        return $res;
     }
 }
 
@@ -490,7 +479,7 @@ if (!function_exists('delete_booking_record')) {
      *
      * @return array{ok:bool, message:string}
      */
-    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser): array
+    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser, bool $allowAnyOwnerStatus = false): array
     {
         if ($bookingId <= 0) {
             return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานที่ต้องการลบ'];
@@ -504,25 +493,118 @@ if (!function_exists('delete_booking_record')) {
         $uid = (int)$actorUser['id'];
         $isOwner = ((int)$row['requester_id'] === $uid);
         $isPrivileged = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
-        if (!$isPrivileged && !($isOwner && (string)$row['status'] !== 'approved')) {
+        if (!$isPrivileged && !($isOwner && ($allowAnyOwnerStatus || (string)$row['status'] !== 'approved'))) {
             return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ลบข้อมูลคิวงานนี้'];
+        }
+        if (function_exists('ensure_saved_memos_schema')) {
+            ensure_saved_memos_schema($pdo);
         }
         try {
             $pdo->beginTransaction();
             $pdo->prepare('DELETE FROM approval_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
             $pdo->prepare('DELETE FROM notification_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
-            if (function_exists('ensure_saved_memos_schema')) {
-                ensure_saved_memos_schema($pdo);
-                $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            try {
+                if ($pdo->query("SHOW TABLES LIKE 'saved_memos'")->fetch()) {
+                    $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+                }
+            } catch (Throwable $ignored) {
+                // Non-fatal if saved_memos is unavailable
             }
             $pdo->prepare('DELETE FROM bookings WHERE id = :id')->execute([':id' => $bookingId]);
-            $pdo->commit();
+            if ($pdo->inTransaction()) {
+                $pdo->commit();
+            }
             return ['ok' => true, 'message' => 'ลบข้อมูลคิวงาน "' . $row['reference_code'] . '" ออกจากฐานข้อมูลเรียบร้อยแล้ว'];
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             return ['ok' => false, 'message' => 'ไม่สามารถลบข้อมูลคิวงานได้'];
+        }
+    }
+}
+
+if (!function_exists('save_telegram_settings')) {
+    /**
+     * Save Telegram notification settings into system_settings.
+     */
+    function save_telegram_settings(PDO $pdo, bool $enabled, string $botToken, string $chatId): void
+    {
+        ensure_system_settings_schema($pdo);
+        $pairs = [
+            'telegram_enabled'   => $enabled ? '1' : '0',
+            'telegram_bot_token' => trim($botToken),
+            'telegram_chat_id'   => trim($chatId),
+        ];
+        $stmt = $pdo->prepare(
+            'INSERT INTO system_settings (setting_key, setting_value)
+             VALUES (:k, :v)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+        );
+        foreach ($pairs as $k => $v) {
+            $stmt->execute([':k' => $k, ':v' => $v]);
+        }
+    }
+}
+
+if (!function_exists('send_telegram_message')) {
+    /**
+     * Send an HTML message to Telegram Bot API if enabled and configured.
+     *
+     * @return array{ok:bool, skipped:bool, error:?string}
+     */
+    function send_telegram_message(PDO $pdo, string $htmlMessage, bool $forceTest = false): array
+    {
+        $cfg = get_telegram_settings($pdo);
+        if ((!$cfg['enabled'] && !$forceTest) || $cfg['bot_token'] === '' || $cfg['chat_id'] === '') {
+            return ['ok' => false, 'skipped' => true, 'error' => null];
+        }
+
+        $url = 'https://api.telegram.org/bot' . rawurlencode($cfg['bot_token']) . '/sendMessage';
+        // rawurlencode encodes ':' in bot token; Telegram expects raw token with ':'
+        $url = 'https://api.telegram.org/bot' . $cfg['bot_token'] . '/sendMessage';
+        $payload = http_build_query([
+            'chat_id'                  => $cfg['chat_id'],
+            'text'                     => $htmlMessage,
+            'parse_mode'               => 'HTML',
+            'disable_web_page_preview' => 'true',
+        ]);
+
+        try {
+            if (function_exists('curl_init')) {
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $payload,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 4,
+                    CURLOPT_CONNECTTIMEOUT => 3,
+                ]);
+                $resp = curl_exec($ch);
+                $err = curl_error($ch);
+                $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                if ($resp !== false && $code >= 200 && $code < 300) {
+                    return ['ok' => true, 'skipped' => false, 'error' => null];
+                }
+                return ['ok' => false, 'skipped' => false, 'error' => $err ?: ('HTTP ' . $code)];
+            }
+
+            $ctx = stream_context_create([
+                'http' => [
+                    'method'  => 'POST',
+                    'header'  => "Content-Type: application/x-www-form-urlencoded\r\n",
+                    'content' => $payload,
+                    'timeout' => 4,
+                ],
+            ]);
+            $resp = @file_get_contents($url, false, $ctx);
+            if ($resp !== false) {
+                return ['ok' => true, 'skipped' => false, 'error' => null];
+            }
+            return ['ok' => false, 'skipped' => false, 'error' => 'Request failed'];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'skipped' => false, 'error' => $e->getMessage()];
         }
     }
 }
@@ -598,31 +680,11 @@ if (!function_exists('cancel_booking_record')) {
      */
     function cancel_booking_record(PDO $pdo, int $bookingId, array $actorUser, string $reason = ''): array
     {
-        if ($bookingId <= 0) {
-            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคำขอที่ต้องการยกเลิก'];
+        $res = delete_booking_record($pdo, $bookingId, $actorUser, true);
+        if ($res['ok']) {
+            $res['message'] = str_replace('ลบข้อมูลคิวงาน', 'ยกเลิกและลบคำขอ', $res['message']);
         }
-        ensure_booking_cancelled_schema($pdo);
-        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
-        $stmt->execute([':id' => $bookingId]);
-        $row = $stmt->fetch();
-        if (!$row) {
-            return ['ok' => false, 'message' => 'ไม่พบคำขอจองนี้ในระบบ'];
-        }
-        $uid = (int)$actorUser['id'];
-        $isOwner = ((int)$row['requester_id'] === $uid);
-        $isApprover = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
-        if (!$isOwner && !$isApprover) {
-            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ยกเลิกคำขอจองนี้'];
-        }
-        if ((string)$row['status'] === 'cancelled') {
-            return ['ok' => false, 'message' => 'คำขอนี้ถูกยกเลิกไปแล้ว'];
-        }
-        $cancelReason = trim($reason) !== ''
-            ? trim($reason)
-            : ('ยกเลิกโดย' . ($isOwner ? 'ผู้ขอจอง' : 'ผู้พิจารณา/ผู้ดูแล') . ' (' . ($actorUser['full_name'] ?? '') . ')');
-        $upd = $pdo->prepare("UPDATE bookings SET status = 'cancelled', rejection_reason = :r WHERE id = :id");
-        $upd->execute([':r' => mb_substr($cancelReason, 0, 500), ':id' => $bookingId]);
-        return ['ok' => true, 'message' => 'ยกเลิกคำขอ "' . $row['reference_code'] . '" เรียบร้อยแล้ว'];
+        return $res;
     }
 }
 
@@ -632,7 +694,7 @@ if (!function_exists('delete_booking_record')) {
      *
      * @return array{ok:bool, message:string}
      */
-    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser): array
+    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser, bool $allowAnyOwnerStatus = false): array
     {
         if ($bookingId <= 0) {
             return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานที่ต้องการลบ'];
@@ -646,25 +708,118 @@ if (!function_exists('delete_booking_record')) {
         $uid = (int)$actorUser['id'];
         $isOwner = ((int)$row['requester_id'] === $uid);
         $isPrivileged = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
-        if (!$isPrivileged && !($isOwner && (string)$row['status'] !== 'approved')) {
+        if (!$isPrivileged && !($isOwner && ($allowAnyOwnerStatus || (string)$row['status'] !== 'approved'))) {
             return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ลบข้อมูลคิวงานนี้'];
+        }
+        if (function_exists('ensure_saved_memos_schema')) {
+            ensure_saved_memos_schema($pdo);
         }
         try {
             $pdo->beginTransaction();
             $pdo->prepare('DELETE FROM approval_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
             $pdo->prepare('DELETE FROM notification_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
-            if (function_exists('ensure_saved_memos_schema')) {
-                ensure_saved_memos_schema($pdo);
-                $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            try {
+                if ($pdo->query("SHOW TABLES LIKE 'saved_memos'")->fetch()) {
+                    $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+                }
+            } catch (Throwable $ignored) {
+                // Non-fatal if saved_memos is unavailable
             }
             $pdo->prepare('DELETE FROM bookings WHERE id = :id')->execute([':id' => $bookingId]);
-            $pdo->commit();
+            if ($pdo->inTransaction()) {
+                $pdo->commit();
+            }
             return ['ok' => true, 'message' => 'ลบข้อมูลคิวงาน "' . $row['reference_code'] . '" ออกจากฐานข้อมูลเรียบร้อยแล้ว'];
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             return ['ok' => false, 'message' => 'ไม่สามารถลบข้อมูลคิวงานได้'];
+        }
+    }
+}
+
+if (!function_exists('save_telegram_settings')) {
+    /**
+     * Save Telegram notification settings into system_settings.
+     */
+    function save_telegram_settings(PDO $pdo, bool $enabled, string $botToken, string $chatId): void
+    {
+        ensure_system_settings_schema($pdo);
+        $pairs = [
+            'telegram_enabled'   => $enabled ? '1' : '0',
+            'telegram_bot_token' => trim($botToken),
+            'telegram_chat_id'   => trim($chatId),
+        ];
+        $stmt = $pdo->prepare(
+            'INSERT INTO system_settings (setting_key, setting_value)
+             VALUES (:k, :v)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+        );
+        foreach ($pairs as $k => $v) {
+            $stmt->execute([':k' => $k, ':v' => $v]);
+        }
+    }
+}
+
+if (!function_exists('send_telegram_message')) {
+    /**
+     * Send an HTML message to Telegram Bot API if enabled and configured.
+     *
+     * @return array{ok:bool, skipped:bool, error:?string}
+     */
+    function send_telegram_message(PDO $pdo, string $htmlMessage, bool $forceTest = false): array
+    {
+        $cfg = get_telegram_settings($pdo);
+        if ((!$cfg['enabled'] && !$forceTest) || $cfg['bot_token'] === '' || $cfg['chat_id'] === '') {
+            return ['ok' => false, 'skipped' => true, 'error' => null];
+        }
+
+        $url = 'https://api.telegram.org/bot' . rawurlencode($cfg['bot_token']) . '/sendMessage';
+        // rawurlencode encodes ':' in bot token; Telegram expects raw token with ':'
+        $url = 'https://api.telegram.org/bot' . $cfg['bot_token'] . '/sendMessage';
+        $payload = http_build_query([
+            'chat_id'                  => $cfg['chat_id'],
+            'text'                     => $htmlMessage,
+            'parse_mode'               => 'HTML',
+            'disable_web_page_preview' => 'true',
+        ]);
+
+        try {
+            if (function_exists('curl_init')) {
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $payload,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 4,
+                    CURLOPT_CONNECTTIMEOUT => 3,
+                ]);
+                $resp = curl_exec($ch);
+                $err = curl_error($ch);
+                $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                if ($resp !== false && $code >= 200 && $code < 300) {
+                    return ['ok' => true, 'skipped' => false, 'error' => null];
+                }
+                return ['ok' => false, 'skipped' => false, 'error' => $err ?: ('HTTP ' . $code)];
+            }
+
+            $ctx = stream_context_create([
+                'http' => [
+                    'method'  => 'POST',
+                    'header'  => "Content-Type: application/x-www-form-urlencoded\r\n",
+                    'content' => $payload,
+                    'timeout' => 4,
+                ],
+            ]);
+            $resp = @file_get_contents($url, false, $ctx);
+            if ($resp !== false) {
+                return ['ok' => true, 'skipped' => false, 'error' => null];
+            }
+            return ['ok' => false, 'skipped' => false, 'error' => 'Request failed'];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'skipped' => false, 'error' => $e->getMessage()];
         }
     }
 }
@@ -753,31 +908,11 @@ if (!function_exists('cancel_booking_record')) {
      */
     function cancel_booking_record(PDO $pdo, int $bookingId, array $actorUser, string $reason = ''): array
     {
-        if ($bookingId <= 0) {
-            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคำขอที่ต้องการยกเลิก'];
+        $res = delete_booking_record($pdo, $bookingId, $actorUser, true);
+        if ($res['ok']) {
+            $res['message'] = str_replace('ลบข้อมูลคิวงาน', 'ยกเลิกและลบคำขอ', $res['message']);
         }
-        ensure_booking_cancelled_schema($pdo);
-        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
-        $stmt->execute([':id' => $bookingId]);
-        $row = $stmt->fetch();
-        if (!$row) {
-            return ['ok' => false, 'message' => 'ไม่พบคำขอจองนี้ในระบบ'];
-        }
-        $uid = (int)$actorUser['id'];
-        $isOwner = ((int)$row['requester_id'] === $uid);
-        $isApprover = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
-        if (!$isOwner && !$isApprover) {
-            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ยกเลิกคำขอจองนี้'];
-        }
-        if ((string)$row['status'] === 'cancelled') {
-            return ['ok' => false, 'message' => 'คำขอนี้ถูกยกเลิกไปแล้ว'];
-        }
-        $cancelReason = trim($reason) !== ''
-            ? trim($reason)
-            : ('ยกเลิกโดย' . ($isOwner ? 'ผู้ขอจอง' : 'ผู้พิจารณา/ผู้ดูแล') . ' (' . ($actorUser['full_name'] ?? '') . ')');
-        $upd = $pdo->prepare("UPDATE bookings SET status = 'cancelled', rejection_reason = :r WHERE id = :id");
-        $upd->execute([':r' => mb_substr($cancelReason, 0, 500), ':id' => $bookingId]);
-        return ['ok' => true, 'message' => 'ยกเลิกคำขอ "' . $row['reference_code'] . '" เรียบร้อยแล้ว'];
+        return $res;
     }
 }
 
@@ -787,7 +922,7 @@ if (!function_exists('delete_booking_record')) {
      *
      * @return array{ok:bool, message:string}
      */
-    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser): array
+    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser, bool $allowAnyOwnerStatus = false): array
     {
         if ($bookingId <= 0) {
             return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานที่ต้องการลบ'];
@@ -801,25 +936,118 @@ if (!function_exists('delete_booking_record')) {
         $uid = (int)$actorUser['id'];
         $isOwner = ((int)$row['requester_id'] === $uid);
         $isPrivileged = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
-        if (!$isPrivileged && !($isOwner && (string)$row['status'] !== 'approved')) {
+        if (!$isPrivileged && !($isOwner && ($allowAnyOwnerStatus || (string)$row['status'] !== 'approved'))) {
             return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ลบข้อมูลคิวงานนี้'];
+        }
+        if (function_exists('ensure_saved_memos_schema')) {
+            ensure_saved_memos_schema($pdo);
         }
         try {
             $pdo->beginTransaction();
             $pdo->prepare('DELETE FROM approval_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
             $pdo->prepare('DELETE FROM notification_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
-            if (function_exists('ensure_saved_memos_schema')) {
-                ensure_saved_memos_schema($pdo);
-                $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            try {
+                if ($pdo->query("SHOW TABLES LIKE 'saved_memos'")->fetch()) {
+                    $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+                }
+            } catch (Throwable $ignored) {
+                // Non-fatal if saved_memos is unavailable
             }
             $pdo->prepare('DELETE FROM bookings WHERE id = :id')->execute([':id' => $bookingId]);
-            $pdo->commit();
+            if ($pdo->inTransaction()) {
+                $pdo->commit();
+            }
             return ['ok' => true, 'message' => 'ลบข้อมูลคิวงาน "' . $row['reference_code'] . '" ออกจากฐานข้อมูลเรียบร้อยแล้ว'];
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             return ['ok' => false, 'message' => 'ไม่สามารถลบข้อมูลคิวงานได้'];
+        }
+    }
+}
+
+if (!function_exists('save_telegram_settings')) {
+    /**
+     * Save Telegram notification settings into system_settings.
+     */
+    function save_telegram_settings(PDO $pdo, bool $enabled, string $botToken, string $chatId): void
+    {
+        ensure_system_settings_schema($pdo);
+        $pairs = [
+            'telegram_enabled'   => $enabled ? '1' : '0',
+            'telegram_bot_token' => trim($botToken),
+            'telegram_chat_id'   => trim($chatId),
+        ];
+        $stmt = $pdo->prepare(
+            'INSERT INTO system_settings (setting_key, setting_value)
+             VALUES (:k, :v)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+        );
+        foreach ($pairs as $k => $v) {
+            $stmt->execute([':k' => $k, ':v' => $v]);
+        }
+    }
+}
+
+if (!function_exists('send_telegram_message')) {
+    /**
+     * Send an HTML message to Telegram Bot API if enabled and configured.
+     *
+     * @return array{ok:bool, skipped:bool, error:?string}
+     */
+    function send_telegram_message(PDO $pdo, string $htmlMessage, bool $forceTest = false): array
+    {
+        $cfg = get_telegram_settings($pdo);
+        if ((!$cfg['enabled'] && !$forceTest) || $cfg['bot_token'] === '' || $cfg['chat_id'] === '') {
+            return ['ok' => false, 'skipped' => true, 'error' => null];
+        }
+
+        $url = 'https://api.telegram.org/bot' . rawurlencode($cfg['bot_token']) . '/sendMessage';
+        // rawurlencode encodes ':' in bot token; Telegram expects raw token with ':'
+        $url = 'https://api.telegram.org/bot' . $cfg['bot_token'] . '/sendMessage';
+        $payload = http_build_query([
+            'chat_id'                  => $cfg['chat_id'],
+            'text'                     => $htmlMessage,
+            'parse_mode'               => 'HTML',
+            'disable_web_page_preview' => 'true',
+        ]);
+
+        try {
+            if (function_exists('curl_init')) {
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $payload,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 4,
+                    CURLOPT_CONNECTTIMEOUT => 3,
+                ]);
+                $resp = curl_exec($ch);
+                $err = curl_error($ch);
+                $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                if ($resp !== false && $code >= 200 && $code < 300) {
+                    return ['ok' => true, 'skipped' => false, 'error' => null];
+                }
+                return ['ok' => false, 'skipped' => false, 'error' => $err ?: ('HTTP ' . $code)];
+            }
+
+            $ctx = stream_context_create([
+                'http' => [
+                    'method'  => 'POST',
+                    'header'  => "Content-Type: application/x-www-form-urlencoded\r\n",
+                    'content' => $payload,
+                    'timeout' => 4,
+                ],
+            ]);
+            $resp = @file_get_contents($url, false, $ctx);
+            if ($resp !== false) {
+                return ['ok' => true, 'skipped' => false, 'error' => null];
+            }
+            return ['ok' => false, 'skipped' => false, 'error' => 'Request failed'];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'skipped' => false, 'error' => $e->getMessage()];
         }
     }
 }
@@ -856,31 +1084,11 @@ if (!function_exists('cancel_booking_record')) {
      */
     function cancel_booking_record(PDO $pdo, int $bookingId, array $actorUser, string $reason = ''): array
     {
-        if ($bookingId <= 0) {
-            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคำขอที่ต้องการยกเลิก'];
+        $res = delete_booking_record($pdo, $bookingId, $actorUser, true);
+        if ($res['ok']) {
+            $res['message'] = str_replace('ลบข้อมูลคิวงาน', 'ยกเลิกและลบคำขอ', $res['message']);
         }
-        ensure_booking_cancelled_schema($pdo);
-        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
-        $stmt->execute([':id' => $bookingId]);
-        $row = $stmt->fetch();
-        if (!$row) {
-            return ['ok' => false, 'message' => 'ไม่พบคำขอจองนี้ในระบบ'];
-        }
-        $uid = (int)$actorUser['id'];
-        $isOwner = ((int)$row['requester_id'] === $uid);
-        $isApprover = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
-        if (!$isOwner && !$isApprover) {
-            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ยกเลิกคำขอจองนี้'];
-        }
-        if ((string)$row['status'] === 'cancelled') {
-            return ['ok' => false, 'message' => 'คำขอนี้ถูกยกเลิกไปแล้ว'];
-        }
-        $cancelReason = trim($reason) !== ''
-            ? trim($reason)
-            : ('ยกเลิกโดย' . ($isOwner ? 'ผู้ขอจอง' : 'ผู้พิจารณา/ผู้ดูแล') . ' (' . ($actorUser['full_name'] ?? '') . ')');
-        $upd = $pdo->prepare("UPDATE bookings SET status = 'cancelled', rejection_reason = :r WHERE id = :id");
-        $upd->execute([':r' => mb_substr($cancelReason, 0, 500), ':id' => $bookingId]);
-        return ['ok' => true, 'message' => 'ยกเลิกคำขอ "' . $row['reference_code'] . '" เรียบร้อยแล้ว'];
+        return $res;
     }
 }
 
@@ -890,7 +1098,7 @@ if (!function_exists('delete_booking_record')) {
      *
      * @return array{ok:bool, message:string}
      */
-    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser): array
+    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser, bool $allowAnyOwnerStatus = false): array
     {
         if ($bookingId <= 0) {
             return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานที่ต้องการลบ'];
@@ -904,25 +1112,118 @@ if (!function_exists('delete_booking_record')) {
         $uid = (int)$actorUser['id'];
         $isOwner = ((int)$row['requester_id'] === $uid);
         $isPrivileged = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
-        if (!$isPrivileged && !($isOwner && (string)$row['status'] !== 'approved')) {
+        if (!$isPrivileged && !($isOwner && ($allowAnyOwnerStatus || (string)$row['status'] !== 'approved'))) {
             return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ลบข้อมูลคิวงานนี้'];
+        }
+        if (function_exists('ensure_saved_memos_schema')) {
+            ensure_saved_memos_schema($pdo);
         }
         try {
             $pdo->beginTransaction();
             $pdo->prepare('DELETE FROM approval_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
             $pdo->prepare('DELETE FROM notification_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
-            if (function_exists('ensure_saved_memos_schema')) {
-                ensure_saved_memos_schema($pdo);
-                $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            try {
+                if ($pdo->query("SHOW TABLES LIKE 'saved_memos'")->fetch()) {
+                    $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+                }
+            } catch (Throwable $ignored) {
+                // Non-fatal if saved_memos is unavailable
             }
             $pdo->prepare('DELETE FROM bookings WHERE id = :id')->execute([':id' => $bookingId]);
-            $pdo->commit();
+            if ($pdo->inTransaction()) {
+                $pdo->commit();
+            }
             return ['ok' => true, 'message' => 'ลบข้อมูลคิวงาน "' . $row['reference_code'] . '" ออกจากฐานข้อมูลเรียบร้อยแล้ว'];
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             return ['ok' => false, 'message' => 'ไม่สามารถลบข้อมูลคิวงานได้'];
+        }
+    }
+}
+
+if (!function_exists('save_telegram_settings')) {
+    /**
+     * Save Telegram notification settings into system_settings.
+     */
+    function save_telegram_settings(PDO $pdo, bool $enabled, string $botToken, string $chatId): void
+    {
+        ensure_system_settings_schema($pdo);
+        $pairs = [
+            'telegram_enabled'   => $enabled ? '1' : '0',
+            'telegram_bot_token' => trim($botToken),
+            'telegram_chat_id'   => trim($chatId),
+        ];
+        $stmt = $pdo->prepare(
+            'INSERT INTO system_settings (setting_key, setting_value)
+             VALUES (:k, :v)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+        );
+        foreach ($pairs as $k => $v) {
+            $stmt->execute([':k' => $k, ':v' => $v]);
+        }
+    }
+}
+
+if (!function_exists('send_telegram_message')) {
+    /**
+     * Send an HTML message to Telegram Bot API if enabled and configured.
+     *
+     * @return array{ok:bool, skipped:bool, error:?string}
+     */
+    function send_telegram_message(PDO $pdo, string $htmlMessage, bool $forceTest = false): array
+    {
+        $cfg = get_telegram_settings($pdo);
+        if ((!$cfg['enabled'] && !$forceTest) || $cfg['bot_token'] === '' || $cfg['chat_id'] === '') {
+            return ['ok' => false, 'skipped' => true, 'error' => null];
+        }
+
+        $url = 'https://api.telegram.org/bot' . rawurlencode($cfg['bot_token']) . '/sendMessage';
+        // rawurlencode encodes ':' in bot token; Telegram expects raw token with ':'
+        $url = 'https://api.telegram.org/bot' . $cfg['bot_token'] . '/sendMessage';
+        $payload = http_build_query([
+            'chat_id'                  => $cfg['chat_id'],
+            'text'                     => $htmlMessage,
+            'parse_mode'               => 'HTML',
+            'disable_web_page_preview' => 'true',
+        ]);
+
+        try {
+            if (function_exists('curl_init')) {
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $payload,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 4,
+                    CURLOPT_CONNECTTIMEOUT => 3,
+                ]);
+                $resp = curl_exec($ch);
+                $err = curl_error($ch);
+                $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                if ($resp !== false && $code >= 200 && $code < 300) {
+                    return ['ok' => true, 'skipped' => false, 'error' => null];
+                }
+                return ['ok' => false, 'skipped' => false, 'error' => $err ?: ('HTTP ' . $code)];
+            }
+
+            $ctx = stream_context_create([
+                'http' => [
+                    'method'  => 'POST',
+                    'header'  => "Content-Type: application/x-www-form-urlencoded\r\n",
+                    'content' => $payload,
+                    'timeout' => 4,
+                ],
+            ]);
+            $resp = @file_get_contents($url, false, $ctx);
+            if ($resp !== false) {
+                return ['ok' => true, 'skipped' => false, 'error' => null];
+            }
+            return ['ok' => false, 'skipped' => false, 'error' => 'Request failed'];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'skipped' => false, 'error' => $e->getMessage()];
         }
     }
 }
@@ -993,31 +1294,11 @@ if (!function_exists('cancel_booking_record')) {
      */
     function cancel_booking_record(PDO $pdo, int $bookingId, array $actorUser, string $reason = ''): array
     {
-        if ($bookingId <= 0) {
-            return ['ok' => false, 'message' => 'ไม่พบข้อมูลคำขอที่ต้องการยกเลิก'];
+        $res = delete_booking_record($pdo, $bookingId, $actorUser, true);
+        if ($res['ok']) {
+            $res['message'] = str_replace('ลบข้อมูลคิวงาน', 'ยกเลิกและลบคำขอ', $res['message']);
         }
-        ensure_booking_cancelled_schema($pdo);
-        $stmt = $pdo->prepare('SELECT id, reference_code, requester_id, status FROM bookings WHERE id = :id LIMIT 1');
-        $stmt->execute([':id' => $bookingId]);
-        $row = $stmt->fetch();
-        if (!$row) {
-            return ['ok' => false, 'message' => 'ไม่พบคำขอจองนี้ในระบบ'];
-        }
-        $uid = (int)$actorUser['id'];
-        $isOwner = ((int)$row['requester_id'] === $uid);
-        $isApprover = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
-        if (!$isOwner && !$isApprover) {
-            return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ยกเลิกคำขอจองนี้'];
-        }
-        if ((string)$row['status'] === 'cancelled') {
-            return ['ok' => false, 'message' => 'คำขอนี้ถูกยกเลิกไปแล้ว'];
-        }
-        $cancelReason = trim($reason) !== ''
-            ? trim($reason)
-            : ('ยกเลิกโดย' . ($isOwner ? 'ผู้ขอจอง' : 'ผู้พิจารณา/ผู้ดูแล') . ' (' . ($actorUser['full_name'] ?? '') . ')');
-        $upd = $pdo->prepare("UPDATE bookings SET status = 'cancelled', rejection_reason = :r WHERE id = :id");
-        $upd->execute([':r' => mb_substr($cancelReason, 0, 500), ':id' => $bookingId]);
-        return ['ok' => true, 'message' => 'ยกเลิกคำขอ "' . $row['reference_code'] . '" เรียบร้อยแล้ว'];
+        return $res;
     }
 }
 
@@ -1027,7 +1308,7 @@ if (!function_exists('delete_booking_record')) {
      *
      * @return array{ok:bool, message:string}
      */
-    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser): array
+    function delete_booking_record(PDO $pdo, int $bookingId, array $actorUser, bool $allowAnyOwnerStatus = false): array
     {
         if ($bookingId <= 0) {
             return ['ok' => false, 'message' => 'ไม่พบข้อมูลคิวงานที่ต้องการลบ'];
@@ -1041,25 +1322,148 @@ if (!function_exists('delete_booking_record')) {
         $uid = (int)$actorUser['id'];
         $isOwner = ((int)$row['requester_id'] === $uid);
         $isPrivileged = has_role([ROLE_HEAD, ROLE_VICE_DIRECTOR, ROLE_DIRECTOR, ROLE_STAFF, ROLE_ADMIN], $actorUser);
-        if (!$isPrivileged && !($isOwner && (string)$row['status'] !== 'approved')) {
+        if (!$isPrivileged && !($isOwner && ($allowAnyOwnerStatus || (string)$row['status'] !== 'approved'))) {
             return ['ok' => false, 'message' => 'คุณไม่มีสิทธิ์ลบข้อมูลคิวงานนี้'];
+        }
+        if (function_exists('ensure_saved_memos_schema')) {
+            ensure_saved_memos_schema($pdo);
         }
         try {
             $pdo->beginTransaction();
             $pdo->prepare('DELETE FROM approval_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
             $pdo->prepare('DELETE FROM notification_logs WHERE booking_id = :id')->execute([':id' => $bookingId]);
-            if (function_exists('ensure_saved_memos_schema')) {
-                ensure_saved_memos_schema($pdo);
-                $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+            try {
+                if ($pdo->query("SHOW TABLES LIKE 'saved_memos'")->fetch()) {
+                    $pdo->prepare('UPDATE saved_memos SET booking_id = NULL WHERE booking_id = :id')->execute([':id' => $bookingId]);
+                }
+            } catch (Throwable $ignored) {
+                // Non-fatal if saved_memos is unavailable
             }
             $pdo->prepare('DELETE FROM bookings WHERE id = :id')->execute([':id' => $bookingId]);
-            $pdo->commit();
+            if ($pdo->inTransaction()) {
+                $pdo->commit();
+            }
             return ['ok' => true, 'message' => 'ลบข้อมูลคิวงาน "' . $row['reference_code'] . '" ออกจากฐานข้อมูลเรียบร้อยแล้ว'];
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             return ['ok' => false, 'message' => 'ไม่สามารถลบข้อมูลคิวงานได้'];
+        }
+    }
+}
+
+if (!function_exists('get_telegram_settings')) {
+    /**
+     * Load Telegram notification settings from system_settings.
+     *
+     * @return array{enabled:bool, bot_token:string, chat_id:string}
+     */
+    function get_telegram_settings(PDO $pdo): array
+    {
+        ensure_system_settings_schema($pdo);
+        $out = ['enabled' => false, 'bot_token' => '', 'chat_id' => ''];
+        try {
+            $stmt = $pdo->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('telegram_enabled', 'telegram_bot_token', 'telegram_chat_id')");
+            foreach ($stmt->fetchAll() as $row) {
+                $k = (string)$row['setting_key'];
+                $v = (string)$row['setting_value'];
+                if ($k === 'telegram_enabled') {
+                    $out['enabled'] = ($v === '1');
+                } elseif ($k === 'telegram_bot_token') {
+                    $out['bot_token'] = $v;
+                } elseif ($k === 'telegram_chat_id') {
+                    $out['chat_id'] = $v;
+                }
+            }
+        } catch (Throwable $e) {
+            // Ignore read failure
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('save_telegram_settings')) {
+    /**
+     * Save Telegram notification settings into system_settings.
+     */
+    function save_telegram_settings(PDO $pdo, bool $enabled, string $botToken, string $chatId): void
+    {
+        ensure_system_settings_schema($pdo);
+        $pairs = [
+            'telegram_enabled'   => $enabled ? '1' : '0',
+            'telegram_bot_token' => trim($botToken),
+            'telegram_chat_id'   => trim($chatId),
+        ];
+        $stmt = $pdo->prepare(
+            'INSERT INTO system_settings (setting_key, setting_value)
+             VALUES (:k, :v)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+        );
+        foreach ($pairs as $k => $v) {
+            $stmt->execute([':k' => $k, ':v' => $v]);
+        }
+    }
+}
+
+if (!function_exists('send_telegram_message')) {
+    /**
+     * Send an HTML message to Telegram Bot API if enabled and configured.
+     *
+     * @return array{ok:bool, skipped:bool, error:?string}
+     */
+    function send_telegram_message(PDO $pdo, string $htmlMessage, bool $forceTest = false): array
+    {
+        $cfg = get_telegram_settings($pdo);
+        if ((!$cfg['enabled'] && !$forceTest) || $cfg['bot_token'] === '' || $cfg['chat_id'] === '') {
+            return ['ok' => false, 'skipped' => true, 'error' => null];
+        }
+
+        $url = 'https://api.telegram.org/bot' . rawurlencode($cfg['bot_token']) . '/sendMessage';
+        // rawurlencode encodes ':' in bot token; Telegram expects raw token with ':'
+        $url = 'https://api.telegram.org/bot' . $cfg['bot_token'] . '/sendMessage';
+        $payload = http_build_query([
+            'chat_id'                  => $cfg['chat_id'],
+            'text'                     => $htmlMessage,
+            'parse_mode'               => 'HTML',
+            'disable_web_page_preview' => 'true',
+        ]);
+
+        try {
+            if (function_exists('curl_init')) {
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $payload,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 4,
+                    CURLOPT_CONNECTTIMEOUT => 3,
+                ]);
+                $resp = curl_exec($ch);
+                $err = curl_error($ch);
+                $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                if ($resp !== false && $code >= 200 && $code < 300) {
+                    return ['ok' => true, 'skipped' => false, 'error' => null];
+                }
+                return ['ok' => false, 'skipped' => false, 'error' => $err ?: ('HTTP ' . $code)];
+            }
+
+            $ctx = stream_context_create([
+                'http' => [
+                    'method'  => 'POST',
+                    'header'  => "Content-Type: application/x-www-form-urlencoded\r\n",
+                    'content' => $payload,
+                    'timeout' => 4,
+                ],
+            ]);
+            $resp = @file_get_contents($url, false, $ctx);
+            if ($resp !== false) {
+                return ['ok' => true, 'skipped' => false, 'error' => null];
+            }
+            return ['ok' => false, 'skipped' => false, 'error' => 'Request failed'];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'skipped' => false, 'error' => $e->getMessage()];
         }
     }
 }

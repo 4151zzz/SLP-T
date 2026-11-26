@@ -186,7 +186,8 @@ if (!function_exists('log_booking_notification')) {
         ?string $targetRole,
         ?int $targetUserId,
         string $recipient,
-        string $message
+        string $message,
+        bool $sendTelegram = true
     ): void {
         $channel = in_array(NOTIFY_DRIVER, ['log', 'line', 'email'], true) ? NOTIFY_DRIVER : 'log';
         try {
@@ -230,6 +231,13 @@ if (!function_exists('log_booking_notification')) {
             @file_put_contents(LOG_DIR . DIRECTORY_SEPARATOR . 'notifications.log', $logLine, FILE_APPEND | LOCK_EX);
         } catch (Throwable $e) {
             // Ignore filesystem log failure
+        }
+
+        if ($sendTelegram && function_exists('send_telegram_message')) {
+            $tgText = "📢 <b>แจ้งเตือนระบบงานบริหารทั่วไป</b>\n"
+                . "📌 <b>สถานะ/เหตุการณ์:</b> " . htmlspecialchars($eventName, ENT_QUOTES, 'UTF-8') . "\n"
+                . "📝 " . htmlspecialchars($message, ENT_QUOTES, 'UTF-8');
+            send_telegram_message($pdo, $tgText);
         }
     }
 }
